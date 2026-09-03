@@ -1,7 +1,7 @@
 # tools/agentic — contract
 
 The scaffolding, adopted from [agentic-base](https://github.com/nickk25/agentic-base)
-as a unit, at `fb5bc8e`. Its behaviour is documented there; this file exists so the
+as a unit, at `c8e6a88`. Its behaviour is documented there; this file exists so the
 claims it makes travel with the code that makes them, rather than landing in this
 project's root contract as a hundred and fifty unexplained sentences.
 
@@ -61,6 +61,11 @@ for, and it is not here yet.
 - A missing report is an error that says to run the mutator first. `test: INV-floor-06`
 - An empty ratchet holds every file to the floor itself; an entry is a temporary pin, not the normal way to pass. `test: INV-floor-07`
 - Importing the module does not run the tool, so borrowing one function never becomes running the whole thing. `test: INV-floor-08`
+- A project that declares nothing keeps this repository's own suite as the default. `test: INV-probes-01`
+- A project declaring its own test globs is believed, so its tests are the ones an invariant is checked against. `test: INV-probes-02`
+- Several globs are matched together, so a project keeps its own tests alongside the engine's. `test: INV-probes-03`
+- Node arguments a project declares are carried through; TypeScript needs a flag to run at all. `test: INV-probes-04`
+- A malformed declaration falls back to the defaults rather than discovering nothing, since discovering nothing would silently pass every invariant it could not check. `test: INV-probes-05`
 - UnterminatedFence recognises a real closing fence, not just the absence of one. `test: INV-blocks-10`
 - A fence closed with the wrong fence character stays open. `test: INV-blocks-11`
 - A mismatched fence character does not end masking early either. `test: INV-blocks-12`
