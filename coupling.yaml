@@ -1,0 +1,85 @@
+# Coupling rules for Brissa.
+#
+# "If these files change, these other things must be true, or the pull request
+# does not merge."
+#
+# Kinds, in descending order of how much they actually prove:
+#
+#   command  Re-runs something and requires it to succeed. When that something
+#            regenerates a file and compares it against what was committed, this
+#            asks whether the file is TRUE. The only kind that cannot be
+#            satisfied by typing.
+#   added    A brand new path matching the pattern must exist.
+#   changed  Some diff exists in the target. Satisfied by writing anything at
+#            all, so it is a reminder that makes an agent open the file — never
+#            proof the content is right.
+#   label    A named label on the pull request. A deliberate human gesture that
+#            leaves a trace. Not cryptographic.
+#
+# Patterns: `*` one segment · `**` any · `?` one character · `{name}` one
+# captured segment · leading `!` subtracts.
+
+version: 1
+
+rules:
+  # One rule covers every module, because `{module}` fans it out over whatever
+  # exists rather than over a list somebody has to remember to update.
+  - id: module-contract
+    why: A module nobody can read the boundaries of is a module the next agent breaks.
+    when:
+      - "src/{module}/**"
+      - "!src/{module}/CLAUDE.md"
+      - "!src/{module}/**/*.test.ts"
+    require:
+      - kind: command
+        run: "npm run contracts:check"
+        fix: "Run `npm run contracts` and commit the result. Never hand-edit a gen: block."
+      - kind: changed
+        paths: ["src/{module}/CLAUDE.md"]
+        rejectWhitespaceOnly: true
+        fix: "Say what changed about src/{module} in its own contract. If nothing observable changed, say that in one line."
+
+  # Claims about behaviour live in contracts; this keeps each one attached to a
+  # test that actually ran.
+  - id: invariants-anchored
+    why: An unanchored invariant is a sentence. An untested one is a sentence nobody checks.
+    when:
+      - "src/**"
+      - "**/CLAUDE.md"
+    require:
+      - kind: command
+        run: "npm run invariants"
+        fix: "Write the missing test with the id at the front of its title, or remove the claim from the contract."
+
+  # The corpus is the definition of "correct" for a translator. An agent that
+  # can edit it can make its own output right by changing what right means.
+  - id: corpus-is-evidence
+    why: Whoever can edit the expected answer can never be wrong.
+    when:
+      - "fixtures/corpus/**"
+    require:
+      - kind: label
+        name: human-approved
+        fix: "These are real messages and the decisions they should produce. Changing them changes what correct means, so a person has to say so out loud."
+
+  # A prompt is behaviour. Changing one without measuring it is shipping an
+  # untested change to the only part of the product a user actually sees.
+  - id: prompt-evaluated
+    when:
+      - "src/llm/prompts/**"
+    require:
+      - kind: command
+        run: "npm run eval:check"
+        fix: "Run `npm run eval` and commit the result. The recorded score carries the prompt's hash, so an unrun eval cannot pass for a run one."
+
+  # The controls that protect every other control.
+  - id: protected-controls
+    why: A rule an agent can edit on its own is not a rule.
+    when:
+      - "coupling.yaml"
+      - ".github/workflows/**"
+      - "tools/agentic/**"
+    require:
+      - kind: label
+        name: human-approved
+        fix: "Add the `human-approved` label by hand once a person has read the diff."

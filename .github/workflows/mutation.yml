@@ -1,0 +1,52 @@
+name: mutation
+
+# Mutation testing proves the test suite has teeth, not just that it exists —
+# a passing test is not the same claim as a test that would fail if the code
+# it guards were wrong. That takes minutes, not seconds (every mutant reruns
+# the full suite), so it runs on its own schedule rather than blocking a pull
+# request the way `gates.yml` does. A check every pull request has to wait on
+# is a check that gets deleted the first time it is inconvenient.
+
+on:
+  schedule:
+    # 06:00 UTC every Monday.
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  mutate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Fails the run when the *global* score drops below the threshold set
+      # in stryker.config.json — see that file for what the number is and why.
+      - name: Mutation testing
+        run: npm run mutate
+
+      # The global score alone lets a strong file subsidise a weak one — see
+      # tools/agentic/mutation-floor.mjs for why that already happened here
+      # once, and for what the per-file number is and why. Runs even when the
+      # global score above already failed, so a run that fails both names the
+      # specific file, not just the average.
+      - name: Per-file mutation floor
+        if: always()
+        run: node tools/agentic/mutation-floor.mjs
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: reports/mutation
+          retention-days: 30

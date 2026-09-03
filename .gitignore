@@ -1,0 +1,7 @@
+*.log
+.DS_Store
+.stryker-tmp/
+docs/state.html
+docs/state.json
+node_modules/
+reports/

@@ -1,0 +1,28 @@
+{
+  "name": "brissa",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Slack without the language barrier: private, automatic translation of the messages you cannot read.",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "contracts": "node tools/agentic/contracts.mjs",
+    "contracts:check": "node tools/agentic/contracts.mjs --check",
+    "gate": "node tools/agentic/gate.mjs",
+    "gate:plan": "node tools/agentic/gate.mjs --plan",
+    "invariants": "node tools/agentic/invariants.mjs",
+    "state": "node tools/agentic/state.mjs",
+    "state:snapshot": "node tools/agentic/state.mjs snapshot",
+    "test": "node --test 'tools/agentic/**/*.test.mjs'",
+    "verify": "npm run contracts:check && npm run invariants && npm test && npm run gate"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^10.0.0"
+  }
+}

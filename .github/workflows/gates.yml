@@ -1,0 +1,100 @@
+name: gates
+
+on:
+  pull_request:
+    # `labeled` is load-bearing: a `label` requirement can only ever be satisfied
+    # if adding the label re-runs the checks. Without it the gate is unpassable,
+    # and a rule nobody can satisfy is worse than no rule — it teaches agents
+    # that a red check is something to work around.
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: with the default shallow clone the base commit is absent
+      # and every diff against it fails with "bad object".
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Tests
+        run: npm test
+
+      - name: Contracts match the code
+        run: npm run contracts:check
+
+      - name: Invariants anchored to tests
+        run: npm run invariants
+
+      # Pull requests only. A push has no base/head pair, the range collapses to
+      # the merge base, and the gate correctly refuses to call that a pass — so
+      # running it here would paint every merge red and teach agents that red on
+      # `main` is normal, which is the one lesson this repository cannot afford.
+      - name: Coupling rules
+        if: github.event_name == 'pull_request'
+        env:
+          # Two fixed SHAs. Never branch names — main moves while the pull
+          # request is open. On a push there is no pull request, so the engine
+          # falls back to the merge base.
+          AGENTIC_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          AGENTIC_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AGENTIC_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: npm run gate
+
+  state:
+    # Measurements live on their own branch, never on main.
+    #
+    # main is protected with an empty bypass list — nobody, including the owner
+    # and including CI, writes to it outside a pull request. That is the whole
+    # point, so the measurement had to move rather than the protection bend.
+    # A side benefit: no race with a merge landing while the suite runs.
+    if: github.event_name == 'push'
+    concurrency:
+      group: state
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+
+      - name: Restore the snapshot history
+        run: |
+          git fetch origin state:refs/remotes/origin/state || true
+          git checkout origin/state -- .agentic/snapshots 2>/dev/null || true
+
+      - run: npm run state -- --allow-dirty
+
+      - name: Publish the measurement
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B state
+          git add -f .agentic/snapshots docs/state.json docs/state.html
+          git commit -m "state: snapshot ${GITHUB_SHA:0:7}"
+          # A derived branch: its history is the measurements, rebuilt each time
+          # from the previous ones, so replacing it wholesale is correct.
+          git push -f origin state
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: state
+          path: docs/state.*

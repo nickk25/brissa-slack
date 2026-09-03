@@ -1,0 +1,436 @@
+{
+  "_": "Real Slack messages, anonymised. See README.md — this file defines what correct means.",
+  "reads": [
+    "es",
+    "en"
+  ],
+  "cases": [
+    {
+      "id": "c-001",
+      "text": "Hi all.\nLeider konnte ich nicht alle zu einem Zeitpunkt dazu holen. daher werden wir die barcelona session 2-3 wochen verschieben bis alle wichtigen am Start sind.\n\n:smiling_face_with_tear::persevere:\n\nAlternativ würde ich aber gerne nächste Woche gerne in München zumindest eine kleine Gruppe zusammen bringen. Daran arbwite ich heute und gebe gleich Bescheid.\n\nFür Barcelona plane ich mit Persona I und komme auf euch zurueck.\n\nSorry, aber wir sollten alle an board haben",
+      "languages": [
+        "en",
+        "de"
+      ],
+      "categories": [
+        "starts-in-another-language",
+        "missing-umlauts",
+        "typos",
+        "long",
+        "multi-paragraph"
+      ],
+      "startsIn": "en",
+      "expected": "translate",
+      "note": "The canonical case. Opens in English, continues entirely in German. A detector reading the first line calls it English and does nothing. Also 'arbwite' for 'arbeite', 'zurueck' without its umlaut, and 'an board' mixed in."
+    },
+    {
+      "id": "c-002",
+      "text": "Ja, Drittaerste and board holen und dann routen",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "categories": [
+        "code-switching-intra",
+        "missing-umlauts",
+        "typos",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "English embedded inside a German sentence. 'Drittaerste' is a typo for 'Drittärzte'. Ten words, three problems."
+    },
+    {
+      "id": "c-003",
+      "text": "Was meinst du mir “was ist mit aufbau eines Aerztenetzwerks gemeint?” Kind of our business?",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "categories": [
+        "code-switching-intra",
+        "missing-umlauts",
+        "nested-quote"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "German with a quoted phrase and an English closing question. The nested quote must survive translation."
+    },
+    {
+      "id": "c-004",
+      "text": "Also 500 aerzte",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "false-friend",
+        "missing-umlauts",
+        "short",
+        "numbers"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "A false friend: German 'Also' means 'so', not 'also'. A careless translator lets it pass as English. The number is not touched."
+    },
+    {
+      "id": "c-005",
+      "text": "Muss nur plattform es koennen",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "missing-umlauts",
+        "short",
+        "informal-grammar"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Chat German: no capital on the noun, no umlaut, compressed word order."
+    },
+    {
+      "id": "c-006",
+      "text": "Hard Requirement scheint ISO 27001 zu sein",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "categories": [
+        "code-switching-intra",
+        "loanword",
+        "untranslatable-standard"
+      ],
+      "startsIn": "en",
+      "expected": "translate",
+      "note": "An English noun phrase as the subject of a German sentence. 'ISO 27001' is never translated."
+    },
+    {
+      "id": "c-007",
+      "text": "Klingt nach was neuem Aufbauen, die meinen dann wohl \"Mitbringen\" eines Ärztenetzwerks",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "clean-german",
+        "with-umlauts",
+        "emphatic-quotes"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Correct German with umlauts. The quotes are emphatic, not a citation — translating them literally loses the irony."
+    },
+    {
+      "id": "c-008",
+      "text": "Sieht nach einer coolen Challenge aus!:muscle:",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "categories": [
+        "loanword",
+        "emoji",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "An anglicism declined in German ('coolen Challenge'). The emoji is stuck to the text with no space and has to survive."
+    },
+    {
+      "id": "c-009",
+      "text": "Erinnert mich an ClienteQ :sweat_smile:",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "acronym",
+        "emoji",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "A client acronym that is neither translated nor expanded."
+    },
+    {
+      "id": "c-010",
+      "text": "ProveedorY und ProveedorX sitzen auch in Bayern",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "product-names",
+        "place-name",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Two company names and a region. None is translated, and 'Bayern' should not become 'Bavaria' if the rest of the thread calls it Bayern."
+    },
+    {
+      "id": "c-011",
+      "text": "ProveedorZ auch :wink:",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "short-ambiguous",
+        "product-names",
+        "emoji"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Two words. Is this worth translating at all? A deliberate borderline case: it measures whether the system is noisy."
+    },
+    {
+      "id": "c-012",
+      "text": "Danke!",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "short-ambiguous"
+      ],
+      "startsIn": "de",
+      "expected": "ignore",
+      "note": "German, yes, but anyone understands it. Translating it is pure noise. This case defines where the silence threshold sits."
+    },
+    {
+      "id": "c-013",
+      "text": "Passt bei mir auch!",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "short-ambiguous"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "The border with c-012: also short, but 'passt' means nothing to someone without German. The pair defines the line."
+    },
+    {
+      "id": "c-014",
+      "text": "Morgen 13:00-14:00 geht bei mir",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "dates-times",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "'Morgen' is 'tomorrow', not 'in the morning'. The 24-hour time is not reformatted."
+    },
+    {
+      "id": "c-015",
+      "text": "Einladung für 13.00 Uhr ist raus.",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "dates-times",
+        "numeric-format"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "A time written with a German full stop. If the translator 'fixes' it to 13:00 it is editing data."
+    },
+    {
+      "id": "c-016",
+      "text": "Ich bin da schon doppelt belegt. Eins könnte ich verschieben, das andere nicht. Sagt bescheid, wenn ich das eine verlegen soll",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "clean-german",
+        "wrong-lowercase"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "'Sagt bescheid' should be 'Bescheid'. A typical typo that must not confuse the model."
+    },
+    {
+      "id": "c-017",
+      "text": "@persona - Persona G hat diese Woche Urlaub",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "mention",
+        "untranslatable-name",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "The mention has to come out intact and in place. It is the most visible failure if it breaks."
+    },
+    {
+      "id": "c-018",
+      "text": "@persona @persona @persona wie sieht’s bei Euch aus?",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "mention",
+        "typographic-apostrophe",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Three mentions in a row and a typographic apostrophe in 'sieht's'. Checks they are neither collapsed nor reordered."
+    },
+    {
+      "id": "c-019",
+      "text": "<!channel> ich habe noch nicht geschafft, die Dokumente im Einzelnen durchzugehen, aber hier schon mal für euch alle der Link zu den vollständigen Unterlagen: <https://ejemplo.test/carpeta/abc123|ejemplo.test/carpeta/abc123>",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "link",
+        "slack-syntax",
+        "untranslatable-url"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "A link in Slack syntax with visible text. Neither the URL nor the <!channel> is touched, and the link format has to survive."
+    },
+    {
+      "id": "c-020",
+      "text": "@persona Kriterium: Zertifikate von Qualitätskontrollinstituten\nBeschreibung des Eignungskriteriums: Zertifizierung (Mit dem Angebot; Mittels Dritterklärung):\nNachweis über eine gültige ISO Zertifizierung 27001",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "formal-german",
+        "multi-line",
+        "terminology",
+        "untranslatable-standard"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Administrative German with long compound words. The line breaks are structure, not decoration."
+    },
+    {
+      "id": "c-021",
+      "text": "kurz zum Punkt X, das ist die Go/No-Go-Frage:\n\nDie Zertifizierung haben wir nicht und bekommen wir bis zum Stichtag auch nicht. Kein K.o.: § 49 VgV zwingt den Auftraggeber, gleichwertige Nachweise anzuerkennen.\n\n@persona wenn du morgen reinschaust, brauchen wir drei Antworten:\n1. Kriterium oder Leistungsanforderung?\n2. Steht „oder gleichwertig\" dabei?\n3. Wie ist das Verfahren beschrieben?\n\nSonst ist die Frist durch.",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "categories": [
+        "long",
+        "multi-paragraph",
+        "numbered-list",
+        "mention",
+        "loanword",
+        "german-quotes",
+        "legal-reference"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "The most complete case: paragraphs, a numbered list, a mention, 'Go/No-Go' in English, German low quotation marks, and a legal reference that is not translated. Business content replaced; the shape is real."
+    },
+    {
+      "id": "c-022",
+      "text": "Tú sabes que have esa Persona I?",
+      "languages": [
+        "es",
+        "en"
+      ],
+      "categories": [
+        "code-switching-intra",
+        "es-en",
+        "typos"
+      ],
+      "startsIn": "es",
+      "expected": "ignore",
+      "note": "Spanish with an English verb slipped in. The reader reads Spanish and English, so this is NOT translated. An important negative case: mixed languages does not imply translate."
+    },
+    {
+      "id": "c-023",
+      "text": "never heard about her",
+      "languages": [
+        "en"
+      ],
+      "categories": [
+        "negative-en",
+        "short"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "Pure English. Silence."
+    },
+    {
+      "id": "c-024",
+      "text": "Listo, gracias por compartir.",
+      "languages": [
+        "es"
+      ],
+      "categories": [
+        "negative-es",
+        "short"
+      ],
+      "startsIn": "es",
+      "expected": "ignore",
+      "note": "Pure Spanish. Silence."
+    },
+    {
+      "id": "c-025",
+      "text": "Ayer estuve en una llamada con ella, pero no sé qué es su responsabilidad",
+      "languages": [
+        "es"
+      ],
+      "categories": [
+        "negative-es"
+      ],
+      "startsIn": "es",
+      "expected": "ignore",
+      "note": "Spanish with a slightly bent construction. Still silence: this is not a proofreader."
+    },
+    {
+      "id": "c-026",
+      "text": "Yes I agree :slightly_smiling_face: I would go with this one then:\nSehr geehrte/r [Anrede] [Nachname],\nvielen Dank für Ihre Nachricht. Wir melden uns zeitnah mit einem Terminvorschlag.\nMit freundlichen Grüßen\nEmpresaA",
+      "languages": [
+        "en",
+        "de"
+      ],
+      "categories": [
+        "starts-in-another-language",
+        "template",
+        "placeholders",
+        "signature"
+      ],
+      "startsIn": "en",
+      "expected": "translate",
+      "note": "An English comment followed by a German template with bracketed placeholders. The [placeholders] are neither translated nor filled in. Template content replaced."
+    },
+    {
+      "id": "c-027",
+      "text": "Abgabefrist: 28.9. - Start 1.12.",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "dates-times",
+        "numeric-format",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Dates in abbreviated German format. Day and month are not swapped on the way to Spanish."
+    },
+    {
+      "id": "c-028",
+      "text": "Wir haben ja schon ProveedorX",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "modal-particle",
+        "product-names",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "The 'ja' is a modal particle, not 'yes'. It is lost in any literal translation."
+    }
+  ]
+}
