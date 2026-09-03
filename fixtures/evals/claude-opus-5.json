@@ -1,62 +1,15 @@
 {
   "model": "claude-opus-5",
   "promptHash": "ac4def48cc2e",
-  "ranAt": "2026-09-03T13:43:52.383Z",
+  "ranAt": "2026-09-03T14:04:29.559Z",
   "runs": 3,
   "cases": 28,
-  "measured": 22,
-  "agreed": 22,
+  "measured": 28,
+  "agreed": 28,
   "flaky": [],
   "missedTranslations": [],
   "needlessTranslations": [],
-  "errors": [
-    {
-      "id": "c-005",
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011Cegb2LhTHGruioa2ownYC\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011Cegb57dizewdgb5vV6Wik\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011Cegb7ZbV4AQE7Q9b7duLD\"}"
-      ]
-    },
-    {
-      "id": "c-006",
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbA4vQGX5NBS6iqq9XM\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbCjd85REM7bDRQngkD\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbFML28eoqSzBqKDEPj\"}"
-      ]
-    },
-    {
-      "id": "c-008",
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbJBz2WqNcVc8XB7RPe\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbLEyB2914fGUzFwy8K\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbNVy8Atq55oSLEFJ9W\"}"
-      ]
-    },
-    {
-      "id": "c-010",
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbRZnedK6HHfnr9N1Jg\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbTruqcFdDFqozKVzh7\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbVzxb8b2CexbsGnzjX\"}"
-      ]
-    },
-    {
-      "id": "c-013",
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbbSmVuNZDpuYXWdxSQ\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbdH9cSCYBuu7Labp2T\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbfyHewqzhD5yM88mVy\"}"
-      ]
-    },
-    {
-      "id": "c-015",
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbjHbKV4hyiYn24cUeM\"}"
-      ]
-    }
-  ],
+  "errors": [],
   "results": [
     {
       "id": "c-001",
@@ -133,14 +86,14 @@
     {
       "id": "c-005",
       "expected": "translate",
-      "answers": [],
-      "stable": false,
-      "agreed": false,
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011Cegb2LhTHGruioa2ownYC\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011Cegb57dizewdgb5vV6Wik\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011Cegb7ZbV4AQE7Q9b7duLD\"}"
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
       ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
       "categories": [
         "missing-umlauts",
         "short",
@@ -150,14 +103,14 @@
     {
       "id": "c-006",
       "expected": "translate",
-      "answers": [],
-      "stable": false,
-      "agreed": false,
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbA4vQGX5NBS6iqq9XM\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbCjd85REM7bDRQngkD\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbFML28eoqSzBqKDEPj\"}"
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
       ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
       "categories": [
         "code-switching-intra",
         "loanword",
@@ -184,14 +137,14 @@
     {
       "id": "c-008",
       "expected": "translate",
-      "answers": [],
-      "stable": false,
-      "agreed": false,
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbJBz2WqNcVc8XB7RPe\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbLEyB2914fGUzFwy8K\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbNVy8Atq55oSLEFJ9W\"}"
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
       ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
       "categories": [
         "loanword",
         "emoji",
@@ -218,14 +171,14 @@
     {
       "id": "c-010",
       "expected": "translate",
-      "answers": [],
-      "stable": false,
-      "agreed": false,
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbRZnedK6HHfnr9N1Jg\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbTruqcFdDFqozKVzh7\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbVzxb8b2CexbsGnzjX\"}"
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
       ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
       "categories": [
         "product-names",
         "place-name",
@@ -267,14 +220,14 @@
     {
       "id": "c-013",
       "expected": "translate",
-      "answers": [],
-      "stable": false,
-      "agreed": false,
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbbSmVuNZDpuYXWdxSQ\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbdH9cSCYBuu7Labp2T\"}",
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbfyHewqzhD5yM88mVy\"}"
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
       ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
       "categories": [
         "short-ambiguous"
       ]
@@ -300,13 +253,12 @@
       "expected": "translate",
       "answers": [
         "translate",
+        "translate",
         "translate"
       ],
       "stable": true,
-      "agreed": false,
-      "errors": [
-        "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CegbjHbKV4hyiYn24cUeM\"}"
-      ],
+      "agreed": true,
+      "errors": [],
       "categories": [
         "dates-times",
         "numeric-format"

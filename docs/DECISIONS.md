@@ -10,24 +10,25 @@ Measured, not assumed. Each of 28 real messages asked three times per model,
 scoring only the **decision** — translate or stay silent — against answers a
 person wrote by hand.
 
-| Model | Right every time | Unstable | Unmeasurable |
-| --- | --- | --- | --- |
-| Haiku 4.5 | 24/28 | 1 | 0 |
-| **Sonnet 5** | **28/28** | 0 | 0 |
-| Opus 5 | — | — | 6 of 28 |
+| Model | Right every time | Unstable |
+| --- | --- | --- |
+| Haiku 4.5 | 24/28 | 1 |
+| **Sonnet 5** | **28/28** | 0 |
+| Opus 5 | 28/28 | 0 |
 
-Haiku is not merely two points behind: it fails `c-013`, one of the three cases
-that define the threshold between useful and noisy, and it answers `c-027`
-differently on different runs. A model that gives two answers to the same message
-cannot be reasoned about at all.
+Haiku is not merely four behind: it fails `c-013`, one of the three cases that
+define the threshold between useful and noisy, and it answers `c-027` differently
+on different runs. A model that gives two answers to the same message cannot be
+reasoned about at all.
 
-Opus could not be scored. Three consecutive runs hit `overloaded` errors, eight
-in total, worsening each time. That is the service's load rather than the model's
-quality, but a decision has to be made on what can be measured, and Opus could
-not be.
+Sonnet and Opus are indistinguishable on this task, and Opus costs two and a half
+times as much. Nothing measured here justifies the difference.
 
-Sonnet matches Opus's price-tier quality on this task at 40% of the cost and did
-not drop a single call across three full runs.
+A correction worth recording, because it was nearly written down as fact: Opus
+first appeared *unscoreable*, with `overloaded` errors on three consecutive runs.
+That was the harness failing to retry a transient error, not the model failing.
+Adding retries produced 28/28 immediately. A property of the measuring instrument
+was about to become a recorded property of the thing measured.
 
 **Revisit when** translation *quality* is measured. Everything above scores the
 decision only, and the case for a stronger model rests entirely on quality — a
