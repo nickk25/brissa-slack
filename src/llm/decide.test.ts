@@ -95,3 +95,105 @@ test('INV-llm-09 a reader with no languages is a failure, never a guess', async 
   assert.equal(r.kind, 'failed')
   assert.equal(api.calls, 0, 'and it costs nothing to find out')
 })
+
+/** A model that records the whole request, not only the system prompt. */
+const recording = (answers: (object | Error)[] = [{ translate: false }]) => {
+  const requests: Parameters<MessagesApi['create']>[0][] = []
+  let calls = 0
+  const api: MessagesApi = {
+    async create(request) {
+      requests.push(request)
+      const next = answers[calls++] ?? answers.at(-1)
+      if (next instanceof Error) throw next
+      return { content: [{ type: 'text', text: JSON.stringify(next) }] }
+    },
+  }
+  return { api, requests }
+}
+
+test('INV-llm-10 the request carries the schema that makes the answer parseable at all', async () => {
+  // Without `output_config` the model answers in prose and every parse fails —
+  // in production, silently, as "model returned no text" for every message. No
+  // test looked at this field, so any corruption of it would have shipped.
+  const r = recording()
+  await translator(r.api).translate(ask)
+
+  assert.equal(r.requests.length, 1)
+  assert.equal(r.requests[0]?.model, 'test')
+  assert.equal(r.requests[0]?.max_tokens, 2048)
+  assert.deepEqual(r.requests[0]?.output_config, {
+    format: {
+      type: 'json_schema',
+      schema: {
+        type: 'object',
+        properties: {
+          translate: { type: 'boolean' },
+          languages: { type: 'array', items: { type: 'string' } },
+          text: { type: 'string' },
+        },
+        required: ['translate'],
+        additionalProperties: false,
+      },
+    },
+  })
+})
+
+test('INV-llm-11 the message reaches the model as the message, unaltered', async () => {
+  const r = recording()
+  await translator(r.api).translate({ text: 'Hi all.\nPasst bei mir auch!', reads: ['es'] })
+  assert.deepEqual(r.requests[0]?.messages, [{ role: 'user', content: 'Hi all.\nPasst bei mir auch!' }])
+})
+
+test('INV-llm-12 exactly 500 is the service saying “not now”, not “no”', async () => {
+  // The boundary, not a number near it. `>= 500` and `> 500` differ on one
+  // status code, and that code is the most common server error there is.
+  const api = model([status(500), { translate: false }])
+  assert.deepEqual(await translator(api).translate(ask), { kind: 'silent' })
+  assert.equal(api.calls, 2)
+
+  // And the other side of it: 499 is not a server error and is not retried.
+  const refused = model([status(499)])
+  const r = await translator(refused).translate(ask)
+  assert.equal(r.kind, 'failed')
+  assert.equal(refused.calls, 1)
+})
+
+test('INV-llm-13 a reply with no text block is a failure that says so', async () => {
+  // The shape a tool-use-only or empty response takes. Reported rather than
+  // read as silence, which is the product working correctly.
+  const api: MessagesApi = { async create() { return { content: [{ type: 'thinking' }] } } }
+  assert.deepEqual(await translator(api).translate(ask), {
+    kind: 'failed',
+    detail: 'model returned no text',
+  })
+})
+
+test('INV-llm-14 a translation with no languages listed is still a translation', async () => {
+  // `foundLanguages` drives the "Translated from …" line. Undefined there would
+  // reach `renderTranslation` and print nothing where the source belongs.
+  const r = await translator(model([{ translate: true, text: 'Me viene bien.' }])).translate(ask)
+  assert.deepEqual(r, { kind: 'translated', translation: { text: 'Me viene bien.', foundLanguages: [] } })
+})
+
+test('INV-llm-15 backing off means waiting longer each time, not waiting at all', async () => {
+  // A retry loop with a constant or shrinking delay is a retry loop that adds
+  // load to a service already telling us it has too much.
+  const waited: number[] = []
+  const api = model([status(429), status(429), status(429), { translate: false }])
+  await createTranslator(api, {
+    model: 'test',
+    promptPath: PROMPT,
+    sleep: async (ms) => void waited.push(ms),
+  }).translate(ask)
+
+  assert.deepEqual(waited, [1000, 2000, 4000])
+  assert.equal(api.calls, 4)
+})
+
+test('INV-llm-16 a language code with no name is shown as itself rather than dropped', async () => {
+  const r = recording()
+  await translator(r.api).translate({ text: 'Passt!', reads: ['xx', 'de'] })
+  const system = r.requests[0]?.system ?? ''
+  assert.ok(system.includes('xx and German'))
+  assert.ok(!system.includes('{{READS}}'))
+})

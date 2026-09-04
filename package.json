@@ -17,6 +17,7 @@
     "gate": "node tools/agentic/gate.mjs",
     "gate:plan": "node tools/agentic/gate.mjs --plan",
     "invariants": "node tools/agentic/invariants.mjs",
+    "mutate": "stryker run",
     "state": "node tools/agentic/state.mjs",
     "state:snapshot": "node tools/agentic/state.mjs snapshot",
     "test": "node --test 'tools/agentic/**/*.test.mjs' && node --experimental-strip-types --test 'src/**/*.test.ts'",

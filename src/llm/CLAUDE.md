@@ -68,6 +68,32 @@ the product's own normal behaviour.
 - A reader with no languages is a failure, never a guess, and costs nothing to
   find out. `test: INV-llm-09`
 
+## Invariants the mutation report asked for
+
+This module scored 59.09% when mutation testing was first wired up — the worst
+in the repository, in the one file where a fault costs a reader their message.
+Forty-five mutants survived, and nearly all of them lived in the request itself:
+nothing had ever looked at what was actually sent.
+
+- The request carries the schema that makes the answer parseable at all. Without
+  `output_config` the model answers in prose, every parse fails, and it fails
+  *silently* — as "model returned no text", for every message.
+  `test: INV-llm-10`
+- The message reaches the model as the message, unaltered. `test: INV-llm-11`
+- Exactly `500` is the service saying "not now" rather than "no". The boundary,
+  not a number near it: `>= 500` and `> 500` differ on one status code, and it is
+  the most common server error there is. `test: INV-llm-12`
+- A reply with no text block is a failure that says so, not silence — silence is
+  the product working correctly. `test: INV-llm-13`
+- A translation with no languages listed is still a translation; `undefined`
+  there would reach `renderTranslation` and print nothing where the source
+  language belongs. `test: INV-llm-14`
+- Backing off means waiting longer each time. A retry loop with a constant or
+  shrinking delay adds load to a service already saying it has too much.
+  `test: INV-llm-15`
+- A language code with no name is shown as itself rather than dropped.
+  `test: INV-llm-16`
+
 ## Calibration
 
 `npm run calibrate -- --model <id>` scores the decision — never the translation
