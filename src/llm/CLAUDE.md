@@ -33,6 +33,41 @@ Two things in it are load-bearing and easy to lose in an edit:
   and dates. Breaking one of these is the most visible way to lose a reader's
   trust, and trust here is binary rather than gradual.
 
+## The adapter
+
+`decide.ts` answers the port declared in `src/core/translator.ts`, and nothing
+else crosses back: no SDK type, no token count, no model name. The core asked a
+question about a message and gets an answer about a message.
+
+The prompt is read from disk rather than inlined, so exactly one copy exists. The
+eval measures the same bytes this ships; a prompt that drifted from the one that
+was scored would be a prompt with no score.
+
+Transient failures are retried and refusals are not. Overload and rate limiting
+are the service saying "not now"; a 400 is it saying "no", and repeating a
+request it already refused only delays the report of a real problem while
+spending money.
+
+Two answers are treated as broken rather than quiet, because both wear the shape
+of silence: a model that chose to translate and returned no text, and a reader
+with no declared languages. Reporting either as silence would hide a fault behind
+the product's own normal behaviour.
+
+## Invariants of the adapter
+
+- A translation comes back as one, with the languages it found. `test: INV-llm-01`
+- A decision not to translate is silence, not a failure. `test: INV-llm-02`
+- Silence and failure are never the same outcome. `test: INV-llm-03`
+- Asked to translate but given no text is a failure. `test: INV-llm-04`
+- A transient failure is retried and can still succeed. `test: INV-llm-05`
+- A refusal is not retried. `test: INV-llm-06`
+- Retrying gives up rather than looping forever. `test: INV-llm-07`
+- The reader's languages reach the model by name, not as codes — the prompt is
+  written in English about languages and `de` is not a word it can reason about.
+  `test: INV-llm-08`
+- A reader with no languages is a failure, never a guess, and costs nothing to
+  find out. `test: INV-llm-09`
+
 ## Calibration
 
 `npm run calibrate -- --model <id>` scores the decision — never the translation

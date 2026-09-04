@@ -72,6 +72,21 @@ message came from, and that nobody else can see this. Without the second, a
 first-time reader's reasonable assumption is that the whole channel just watched
 a bot translate a colleague for them.
 
+## Three outcomes, not two
+
+`translator.ts` declares the port the core asks a translation through, and it
+returns `translated`, `silent` or `failed`. The last two are both "no
+translation appeared", and keeping them apart is the point.
+
+Staying quiet is this product's normal behaviour. If an outage read as silence,
+the difference between Brissa working perfectly and Brissa being down would be
+invisible — to the reader and on the state page. One of the two is the feature;
+the other is somebody's job.
+
+The port lives here rather than in `src/llm` so the core owns the shape of the
+question. An interface declared in the adapter would let the SDK's vocabulary
+cross back one field at a time.
+
 ## Cost note
 
 `hasNothingToRead` is the only place where being wrong is cheap in one direction
