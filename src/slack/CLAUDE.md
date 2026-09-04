@@ -107,3 +107,61 @@ module needs and all its tests require, but nothing yet implements it.
   carries no thread key at all. `test: INV-slack-17`
 - The notification carries the translation, truncated — not the blocks, and not
   the untruncated text. `test: INV-slack-18`
+
+## The security boundary
+
+`verify.ts` is the only one in the product. The endpoint is a public URL anyone
+can POST to, and everything downstream — the model call, the ephemeral, the
+reader's channel — happens because something here said yes. A missing check does
+not fail loudly: it works perfectly for Slack, and works just as well for
+everybody else.
+
+Slack signs `v0:{timestamp}:{body}` with the app's signing secret. Two
+consequences are easy to get wrong and impossible to notice afterwards:
+
+- The body must be the **raw bytes**, before any JSON parsing. Parsing and
+  re-serialising changes whitespace and key order, and the signature then fails
+  for reasons that look like a Slack outage.
+- The comparison must be **timing-safe**. A byte-by-byte early exit leaks the
+  expected signature to anyone patient enough to measure it, one byte at a time.
+
+Age is the only thing that makes a captured request worthless, because a
+signature never expires on its own. Five minutes, Slack's own recommendation:
+long enough to survive a slow network, short enough that a replay is useless by
+the time anyone finds it.
+
+## The envelope, which `receive` never sees
+
+`receive` is handed the inner event and knows nothing about delivery. The
+envelope is where the two facts the edge needs live: the `event_id` that makes a
+retry recognisable, and the challenge Slack sends once when the endpoint URL is
+first saved. Failing that handshake means the app can never be installed at all.
+
+## Invariants of verification
+
+- A request Slack really signed is accepted. `test: INV-slack-19`
+- Header casing is the proxy's business, not ours. A check that only works behind
+  one deployment is a check that fails open behind another. `test: INV-slack-20`
+- A signature made with another secret is refused. `test: INV-slack-21`
+- A body altered after signing is refused — this is what a parse-and-reserialise
+  would look like from here. `test: INV-slack-22`
+- A request with no signature or no timestamp is refused by name.
+  `test: INV-slack-23`
+- A replayed request stops being valid, in both directions: a clock far ahead is
+  not an early request but one whose age cannot be reasoned about. The boundary
+  itself is inside. `test: INV-slack-24`
+- A timestamp that is not a number is refused rather than compared. `Number('x')`
+  is NaN and every comparison against NaN is false, so the age check would pass —
+  the mutation that turns a guard into a hole. `test: INV-slack-25`
+- A signature of the wrong length is refused, not thrown. `timingSafeEqual`
+  throws on a length mismatch, and a crash where an attacker controls the input
+  is its own problem. `test: INV-slack-26`
+- The setup handshake is recognised and answered. `test: INV-slack-27`
+- An event envelope yields the id a retry is recognised by. `test: INV-slack-28`
+- A first delivery is retry zero rather than an absent one; NaN would compare
+  false against every threshold. `test: INV-slack-29`
+- An envelope we cannot use says which part was missing. Without an id a retry is
+  indistinguishable from a new message, and the only safe reading of "we cannot
+  tell" is to refuse rather than risk a second copy of a translation.
+  `test: INV-slack-30`
+
