@@ -12,6 +12,7 @@
  * rest, and neither is sufficient alone.
  */
 
+import type { InboundMessage } from '../core/ports.ts'
 import type { Block } from '../core/render.ts'
 
 /** What `chat.postEphemeral` needs, and nothing more. */
@@ -63,6 +64,34 @@ export async function sendEphemeral(api: SlackApi, request: EphemeralRequest): P
   // silently failed to appear is indistinguishable, to the reader, from a
   // message Brissa decided not to translate.
   return { delivered: false, because: 'declined', detail: error }
+}
+
+/**
+ * One reader's copy of a translation, in the field names Slack uses.
+ *
+ * This exists so that no other module has to know that our `threadId` is
+ * Slack's `thread_ts`. `receive` performs that rename on the way in; without
+ * this, the rename on the way out would live in the wiring, which is exactly the
+ * kind of knowledge that is supposed to stop at this boundary.
+ *
+ * A top-level message gets **no** `thread_ts` key at all rather than one set to
+ * `undefined`. Slack reads a present-but-empty `thread_ts` as a malformed
+ * request instead of as a top-level post, and under
+ * `exactOptionalPropertyTypes` the two are genuinely different values.
+ */
+export function ephemeralFor(
+  message: InboundMessage,
+  userId: string,
+  blocks: readonly Block[],
+  translated: string,
+): EphemeralRequest {
+  return {
+    channel: message.channelId,
+    user: userId,
+    blocks,
+    text: fallbackText(translated),
+    ...(message.threadId !== undefined ? { thread_ts: message.threadId } : {}),
+  }
 }
 
 /**

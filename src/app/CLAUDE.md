@@ -12,7 +12,10 @@ and awaits them.
 ## What it does not do
 
 **Decide anything, and know no format.** Every judgement belongs to `src/core`
-and every payload shape belongs to an adapter. This module is also where that
+and every payload shape belongs to an adapter — which is why this module asks
+`src/slack` for `ephemeralFor` rather than assembling a `chat.postEphemeral`
+payload itself. It named `thread_ts` here once; that was a Slack field name
+living in the wiring, and it is the shape of every future leak. This module is also where that
 stops being enforceable by inspection, because it is the first one permitted to
 import from everywhere.
 
@@ -52,10 +55,13 @@ is `src/llm`'s to fix, a send failure is `src/slack`'s. Same word, two owners.
 
 ## Two guarantees, and one deliberate non-guarantee
 
-**This never rejects.** Every port call is wrapped. The caller is an HTTP handler
-that has to answer Slack within seconds whatever happened, and a thrown error
-there becomes a Slack retry — which becomes a second copy of every ephemeral,
-precisely when something is already wrong.
+**This never rejects.** Every port call is wrapped, and so is everything between
+them: `renderTranslation` runs after one await and before the next, is not a
+port, and would otherwise escape as a rejected promise if handed a malformed
+`Translation`. The caller is an HTTP handler that has to answer Slack within
+seconds whatever happened, and a thrown error there becomes a Slack retry —
+which becomes a second copy of every ephemeral, precisely when something is
+already wrong.
 
 **The order of outcomes is the order the directory gave.** An order that depended
 on which model call returned first would make every assertion about this flaky.
@@ -69,8 +75,7 @@ absence to be read later as a bug.
 ## Invariants
 
 - One message reaches every reader who needed it and nobody else, with the blocks
-  `renderTranslation` produced and the fallback `fallbackText` produced.
-  `test: INV-app-01`
+  `renderTranslation` produced. `test: INV-app-01`
 - Readers who read the same languages cost one model call, not one each.
   `test: INV-app-02`
 - The same languages in a different order are a different translation, because
@@ -89,10 +94,12 @@ absence to be read later as a bug.
   `test: INV-app-08`
 - A disabled channel spends nothing at all — no model call, no post — and says so
   once per reader. `test: INV-app-09`
-- The author is dropped before grouping, not after; he shares a reads tuple with
-  real recipients and would otherwise be posted his own words back.
+- The author is never posted his own words back, even when he shares a reads
+  tuple with real recipients and would therefore land in their group.
   `test: INV-app-10`
-- A reader who has declared no languages never reaches the model.
+- A reader who has declared no languages never reaches the model. This is the
+  invariant that pins grouping to *after* `shouldAsk`: such a reader would
+  otherwise form a group whose request the translator can only fail.
   `test: INV-app-11`
 - A bot message and a message with nothing to read both cost nothing.
   `test: INV-app-12`
@@ -109,8 +116,18 @@ absence to be read later as a bug.
 - The same event twice does the work twice, because deduplication belongs to the
   HTTP edge. `test: INV-app-18`
 - The real adapters compose: a Slack event becomes an ephemeral with no fake
-  between them but the two edges that would need a network.
-  `test: INV-app-19`
+  between them but the two edges that would need a network. `test: INV-app-19`
+- The reader gets the whole translation and the notification gets a glance of it.
+  Two different budgets; one string serving both would either truncate what the
+  reader reads or push a paragraph into a notification. `test: INV-app-20`
+- Two groups that both need translating each get their own translation, in the
+  channel the message arrived in. `test: INV-app-21`
+- One reader's send failing does not take down the others in their group.
+  `test: INV-app-22`
+- Two readers are grouped only when they declared the very same thing. A key
+  built by joining would make `['es en']` and `['es','en']` one group, and the
+  loser of that collision would be sent a translation into a language they never
+  declared — silently, and only for them. `test: INV-app-23`
 
 ## Why these tests are different from every other suite here
 
@@ -127,9 +144,11 @@ anchoring control the *shape* of a change, never its behaviour.
 whether the right call happened passes happily while three wrong ones happen
 beside it.
 
-`INV-app-19` is the one that fakes only the network edges. It is the only test in
-the repository that would catch the model adapter's JSON parsing, its language
-code to name mapping, and the block shape failing to compose.
+`INV-app-19` is the one that fakes only the network edges. Each part it exercises
+has its own test elsewhere — `INV-llm-01` and `INV-llm-08` for the adapter,
+`INV-core-12` for language names — and what is untested anywhere else is their
+**composition**: the JSON the model returns becoming a block a reader can read,
+with no fake standing between them.
 
 ## Still missing
 

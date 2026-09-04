@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { fallbackText, sendEphemeral } from './send.ts'
+import { ephemeralFor, fallbackText, sendEphemeral } from './send.ts'
 import type { EphemeralRequest, SlackApi } from './send.ts'
+import type { InboundMessage } from '../core/ports.ts'
+import type { Block } from '../core/render.ts'
 
 const api = (response: { ok: boolean; error?: string }): SlackApi => ({
   postEphemeral: async () => response,
@@ -54,4 +56,40 @@ test('INV-slack-14 the fallback text is one line and fits a notification', async
 
 test('INV-slack-15 a short translation is not truncated', async () => {
   assert.equal(fallbackText('Me viene bien.'), 'Me viene bien.')
+})
+
+const inbound: InboundMessage = {
+  channelId: 'C-berlin',
+  authorId: 'U-jens',
+  fromBot: false,
+  text: 'Passt bei mir auch!',
+}
+const blocks: readonly Block[] = [{ type: 'section', text: { type: 'mrkdwn', text: 'Me viene bien.' } }]
+
+test('INV-slack-16 a translation is addressed to one channel and one reader', async () => {
+  const built = ephemeralFor(inbound, 'U-nick', blocks, 'Me viene bien.')
+  assert.equal(built.channel, 'C-berlin')
+  assert.equal(built.user, 'U-nick')
+  assert.equal(built.blocks, blocks)
+})
+
+test('INV-slack-17 our thread becomes Slack’s thread here, and nowhere else', async () => {
+  // `receive` renames `thread_ts` on the way in. Without the matching rename on
+  // the way out, that Slack field name would live in the wiring — the exact
+  // knowledge this boundary exists to contain.
+  const threaded = ephemeralFor({ ...inbound, threadId: '1699.9' }, 'U-nick', blocks, 'Me viene bien.')
+  assert.equal(threaded.thread_ts, '1699.9')
+
+  // Absent, not undefined: Slack reads a present-but-empty `thread_ts` as a
+  // malformed request rather than as a top-level post.
+  const top = ephemeralFor(inbound, 'U-nick', blocks, 'Me viene bien.')
+  assert.ok(!('thread_ts' in top))
+})
+
+test('INV-slack-18 the notification carries the translation, truncated, not the blocks', async () => {
+  const long = 'Sí,\n\nme viene bien. '.repeat(20)
+  const built = ephemeralFor(inbound, 'U-nick', blocks, long)
+  assert.equal(built.text, fallbackText(long))
+  assert.ok(built.text.length <= 120)
+  assert.ok(built.text.endsWith('…'))
 })

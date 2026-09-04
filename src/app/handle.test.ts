@@ -432,3 +432,87 @@ test('INV-app-19 the real adapters compose: a Slack event becomes an ephemeral w
     readers: [{ userId: 'U-nick', kind: 'delivered' }],
   })
 })
+
+test('INV-app-20 the reader gets the whole translation and the notification gets a glance of it', async () => {
+  // The message and the push notification are different budgets. Sending the
+  // blocks and the fallback from one string would either truncate what the
+  // reader reads or push a paragraph into a notification.
+  const long = 'Sí, me viene bien y te escribo mañana temprano. '.repeat(6).trim()
+  const t = fakeTranslator(() => translated(long))
+  const s = fakeSlack()
+  await handleMessage(wire([nick], t.translator, s.api), event())
+
+  const post = s.posts[0]
+  const section = post?.blocks[0]
+  assert.ok(section?.type === 'section')
+  assert.equal(section.text.text, long)
+  assert.equal(post?.text, fallbackText(long))
+  assert.ok((post?.text.length ?? 0) <= 120)
+  assert.notEqual(post?.text, long)
+})
+
+test('INV-app-21 two groups that both need translating each get their own, in the channel it arrived in', async () => {
+  // The ordinary shape of a multilingual channel, and the only case where the
+  // fan-out actually fans out. Every other test has at most one group posting.
+  const berlin: ChannelPolicy = { channelId: 'C-berlin', enabled: true }
+  const t = fakeTranslator((r) => translated(r.reads[0] === 'es' ? SPANISH : 'Passt auch.', ['en']))
+  const s = fakeSlack()
+  const outcome = await handleMessage(
+    wire([nick, ana, bo], t.translator, s.api, berlin),
+    event({ channel: 'C-berlin', text: 'Works for me too, I will write tomorrow.' }),
+  )
+
+  assert.equal(t.calls.length, 2)
+  assert.deepEqual([...new Set(s.posts.map((p) => p.channel))], ['C-berlin'])
+  assert.deepEqual(
+    s.posts.map((p) => [p.user, p.text]).sort(),
+    [['U-ana', fallbackText(SPANISH)], ['U-bo', 'Passt auch.'], ['U-nick', fallbackText(SPANISH)]],
+  )
+  assert.deepEqual(outcome, {
+    kind: 'considered',
+    readers: [
+      { userId: 'U-nick', kind: 'delivered' },
+      { userId: 'U-ana', kind: 'delivered' },
+      { userId: 'U-bo', kind: 'delivered' },
+    ],
+  })
+})
+
+test('INV-app-22 one reader’s send failing does not take down the others in their group', async () => {
+  // The per-reader guard exists for exactly this and was never tested doing it:
+  // every earlier case had the whole group succeed or the whole group fail.
+  const t = fakeTranslator(() => translated(SPANISH))
+  const posts: string[] = []
+  const slack: SlackApi = {
+    async postEphemeral(request) {
+      posts.push(request.user)
+      if (request.user === 'U-ana') throw new Error('ETIMEDOUT')
+      return { ok: true }
+    },
+  }
+  const outcome = await handleMessage(wire([nick, ana, bo], t.translator, slack), event())
+
+  assert.deepEqual(posts, ['U-nick', 'U-ana', 'U-bo'])
+  assert.deepEqual(outcome, {
+    kind: 'considered',
+    readers: [
+      { userId: 'U-nick', kind: 'delivered' },
+      { userId: 'U-ana', kind: 'failed', stage: 'send', detail: 'ETIMEDOUT' },
+      { userId: 'U-bo', kind: 'delivered' },
+    ],
+  })
+})
+
+test('INV-app-23 two readers are only ever grouped when they declared the very same thing', async () => {
+  // A key built by joining would make `['es en']` and `['es','en']` the same
+  // group, and the loser of that collision would be sent a translation into a
+  // language they never declared — silently, and only for them.
+  const odd: Reader = { userId: 'U-odd', reads: ['es en'] }
+  const t = fakeTranslator(() => translated(SPANISH))
+  await handleMessage(wire([nick, odd], t.translator, fakeSlack().api), event())
+
+  assert.deepEqual(t.calls, [
+    { text: GERMAN, reads: ['es', 'en'] },
+    { text: GERMAN, reads: ['es en'] },
+  ])
+})

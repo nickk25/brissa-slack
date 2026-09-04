@@ -20,7 +20,7 @@ import type { InboundMessage, Reader, SkipReason } from '../core/ports.ts'
 import { renderTranslation } from '../core/render.ts'
 import type { Translator } from '../core/translator.ts'
 import { receive, type RejectReason, type SlackMessageEvent } from '../slack/receive.ts'
-import { fallbackText, sendEphemeral, type SlackApi } from '../slack/send.ts'
+import { ephemeralFor, sendEphemeral, type SlackApi } from '../slack/send.ts'
 
 /** The three answers this module needs from the outside world. */
 export interface Ports {
@@ -82,15 +82,23 @@ const detail = (err: unknown): string => String((err as Error)?.message ?? err)
  * `reads[0]` as the language to translate into, so `['es','en']` and
  * `['en','es']` are different translations and must not share a call.
  */
-const groupKey = (reader: Reader): string => reader.reads.join(' ')
+const groupKey = (reader: Reader): string => JSON.stringify(reader.reads)
+
+/** A group always has the reader that created it, so there is no empty case. */
+type Group = readonly [Reader, ...Reader[]]
 
 async function serveGroup(
   ports: Ports,
   message: InboundMessage,
-  readers: readonly Reader[],
+  readers: Group,
   record: (outcome: ReaderOutcome) => void,
 ): Promise<void> {
-  const reads = readers[0]?.reads ?? []
+  // Every reader in a group shares this by construction — that is what the
+  // group is. Taking it from the first is only safe while the key is injective,
+  // which is why `groupKey` serialises rather than joins: `['es en']` and
+  // `['es','en']` join to the same string, and the loser of that collision would
+  // be sent a translation into a language they never declared.
+  const reads = readers[0].reads
 
   let result
   try {
@@ -117,18 +125,11 @@ async function serveGroup(
   // translation and knows nothing about who is reading it; only the send is per
   // person.
   const blocks = renderTranslation(result.translation)
-  const text = fallbackText(result.translation.text)
 
   await Promise.all(
     readers.map(async (r) => {
       try {
-        const sent = await sendEphemeral(ports.slack, {
-          channel: message.channelId,
-          user: r.userId,
-          blocks,
-          text,
-          ...(message.threadId !== undefined ? { thread_ts: message.threadId } : {}),
-        })
+        const sent = await sendEphemeral(ports.slack, ephemeralFor(message, r.userId, blocks, result.translation.text))
         record(
           sent.delivered
             ? { userId: r.userId, kind: 'delivered' }
@@ -176,7 +177,7 @@ export async function handleMessage(ports: Ports, event: SlackMessageEvent): Pro
   // declared languages would otherwise form a group whose request the translator
   // can only fail, turning a skip that has a reason into a failure that has a
   // stack — and the author of the message would never be excluded at all.
-  const groups = new Map<string, Reader[]>()
+  const groups = new Map<string, [Reader, ...Reader[]]>()
   for (const reader of view.readers) {
     const decision = shouldAsk(message, reader, view.policy)
     if (!decision.ask) {
@@ -189,7 +190,23 @@ export async function handleMessage(ports: Ports, event: SlackMessageEvent): Pro
     else groups.set(key, [reader])
   }
 
-  await Promise.all([...groups.values()].map((readers) => serveGroup(ports, message, readers, record)))
+  // Wrapped here rather than only around each port call. `renderTranslation`
+  // runs between two awaits and is not a port, so a malformed `Translation` from
+  // any translator would otherwise escape as a rejected promise — the one thing
+  // this function promises never to do.
+  await Promise.all(
+    [...groups.values()].map(async (readers) => {
+      try {
+        await serveGroup(ports, message, readers, record)
+      } catch (err) {
+        for (const r of readers) {
+          if (!outcomes.has(r.userId)) {
+            record({ userId: r.userId, kind: 'failed', stage: 'translate', detail: detail(err) })
+          }
+        }
+      }
+    }),
+  )
 
   // Emitted in the order the directory gave, so the same message twice produces
   // the same list twice. An order that depended on which model call returned
