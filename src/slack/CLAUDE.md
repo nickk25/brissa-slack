@@ -48,9 +48,41 @@ carrying a hundred others is not a reason to accept a hundred others.
   messages down this channel and a silent drop is indistinguishable from a bug.
   `test: INV-slack-09`
 
+## Sending, and the limit that shapes the product
+
+Slack has exactly one way to show a message to a single person in a channel:
+`chat.postEphemeral`. It carries a constraint worth stating plainly, because the
+product is built around it rather than despite it:
+
+**Slack only delivers an ephemeral message if the reader is currently in the
+channel.** Someone opening Slack to forty overnight messages receives none of
+them.
+
+So `reader-not-in-channel` is an outcome, not a failure — the expected answer for
+anything that arrived while nobody was looking. It is also why a private shortcut
+on the message menu is not a nice-to-have: this path covers what arrives while
+the reader is present, the shortcut covers the rest, and neither is sufficient
+alone.
+
+A real refusal — a missing scope, a bad token, malformed blocks — is a different
+outcome with a different owner, and collapsing the two would hide a bug behind an
+expected silence.
+
+## Invariants of sending
+
+- A delivered ephemeral says so. `test: INV-slack-10`
+- A reader who was not in the channel is its own outcome, not a failure.
+  `test: INV-slack-11`
+- A real refusal is not mistaken for absence; only one of the two is somebody's
+  job to fix. `test: INV-slack-12`
+- A failure never reports as delivered. A translation that silently failed to
+  appear is indistinguishable, to the reader, from one Brissa chose not to make.
+  `test: INV-slack-13`
+- The fallback text is one line and fits a notification; without it the push
+  notification reads "This content can't be displayed". `test: INV-slack-14`
+- A short translation is not truncated. `test: INV-slack-15`
+
 ## Still missing
 
-Sending. `receive` is half an adapter: the other half posts the translation as an
-ephemeral message visible only to the reader, and has to survive Slack declining
-to deliver one — which it does whenever the reader is not currently in the
-channel.
+The shortcut. And a real client: `SlackApi` is one method wide, which is all this
+module needs and all its tests require, but nothing yet implements it.

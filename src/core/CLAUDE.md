@@ -44,6 +44,33 @@ every reason becomes a counter on the state page.
   `test: INV-core-08`
 - Words survive the stripping of everything around them; a mention beside a real
   sentence is still a real sentence. `test: INV-core-09`
+- A translation renders as the message and one line of context, nothing more.
+  `test: INV-core-10`
+- The context says the message is visible to nobody else. `test: INV-core-11`
+- Languages are named rather than printed as codes. `test: INV-core-12`
+- Several languages read as a list rather than a join. `test: INV-core-13`
+- An unknown language code is shown rather than dropped; losing it leaves
+  "Translated" with no source, which reads as a bug. `test: INV-core-14`
+- The translated text is escaped so Slack cannot re-format it — a stray angle
+  bracket in the original must not become markup in the translation.
+  `test: INV-core-15`
+- Escaping leaves ordinary text untouched. `test: INV-core-16`
+
+## Why rendering is here and not in the adapter
+
+`render.ts` produces something shaped like a Slack payload, which looks like
+adapter work. It is not: how a translation reads is a product decision, and
+product decisions that live in an adapter are product decisions nobody tests.
+
+The design pressure is all downward. The output appears unprompted, under
+somebody else's message, in a channel shared with a client. A section and one
+line of context; no header, no divider, no button. Anything that makes it look
+like a separate announcement makes the channel worse than it was.
+
+The context line says two things and both are load-bearing: which language the
+message came from, and that nobody else can see this. Without the second, a
+first-time reader's reasonable assumption is that the whole channel just watched
+a bot translate a colleague for them.
 
 ## Cost note
 
