@@ -1,0 +1,191 @@
+{
+  "generatedAt": "2026-09-04T13:00:07.464Z",
+  "head": {
+    "sha": "581abb0646864dcc77fbca4c2b48fe6affc11e39",
+    "subject": "Prove a request came from Slack before believing any of it (#8)",
+    "ts": "2026-09-04T13:00:07.450Z",
+    "dirty": true
+  },
+  "status": "red",
+  "numbers": {
+    "invariantsCovered": 246,
+    "invariantsDeclared": 246,
+    "failingTests": 0,
+    "couplingViolations": 0
+  },
+  "redZones": [
+    {
+      "what": "dirty snapshot",
+      "detail": "The latest snapshot measured a working tree with uncommitted changes."
+    },
+    {
+      "what": "coupling not measured",
+      "detail": "The gate had no change set to evaluate, so this says nothing about whether the rules hold."
+    }
+  ],
+  "health": {
+    "snapshots": 10,
+    "openRegressions": 0
+  },
+  "timeline": [
+    {
+      "id": "b6366378f39d",
+      "ts": "2026-09-04T13:00:07.450Z",
+      "kind": "invariant.count",
+      "subject": "declared",
+      "severity": "neutral",
+      "evidence": [],
+      "from": 234,
+      "to": 246,
+      "sha": "581abb0646864dcc77fbca4c2b48fe6affc11e39"
+    },
+    {
+      "id": "0a435838d424",
+      "ts": "2026-09-04T12:54:30.976Z",
+      "kind": "invariant.count",
+      "subject": "declared",
+      "severity": "neutral",
+      "evidence": [],
+      "from": 227,
+      "to": 234,
+      "sha": "9b3b7e7ddb7798b1b2c1e056df643d0d74172d02"
+    },
+    {
+      "id": "4201bdbf4c48",
+      "ts": "2026-09-04T12:34:16.618Z",
+      "kind": "module.added",
+      "subject": "app",
+      "severity": "neutral",
+      "evidence": [],
+      "to": "900 lines",
+      "sha": "264199ef1e931c7947245a8525c1061645415cda"
+    },
+    {
+      "id": "d9bc1bbc9983",
+      "ts": "2026-09-04T12:34:16.618Z",
+      "kind": "invariant.count",
+      "subject": "declared",
+      "severity": "neutral",
+      "evidence": [],
+      "from": 201,
+      "to": 227,
+      "sha": "264199ef1e931c7947245a8525c1061645415cda"
+    },
+    {
+      "id": "0fd3a430d57f",
+      "ts": "2026-09-04T12:18:02.324Z",
+      "kind": "module.added",
+      "subject": "store",
+      "severity": "neutral",
+      "evidence": [],
+      "to": "213 lines",
+      "sha": "b027fe425d4d85c0865e38ae57ad00816b14f750"
+    },
+    {
+      "id": "500af300d778",
+      "ts": "2026-09-04T12:18:02.324Z",
+      "kind": "invariant.count",
+      "subject": "declared",
+      "severity": "neutral",
+      "evidence": [],
+      "from": 193,
+      "to": 201,
+      "sha": "b027fe425d4d85c0865e38ae57ad00816b14f750"
+    },
+    {
+      "id": "160c36bc2ec0",
+      "ts": "2026-09-04T10:24:02.639Z",
+      "kind": "invariant.count",
+      "subject": "declared",
+      "severity": "neutral",
+      "evidence": [],
+      "from": 184,
+      "to": 193,
+      "sha": "2691780f343532ace734453f50ef7b02d5ab2922"
+    },
+    {
+      "id": "6aa65ecc6508",
+      "ts": "2026-09-04T08:53:35.775Z",
+      "kind": "invariant.count",
+      "subject": "declared",
+      "severity": "neutral",
+      "evidence": [],
+      "from": 171,
+      "to": 184,
+      "sha": "a6adce38a634692a283c605c61c4202bd880620e"
+    },
+    {
+      "id": "8c08cbb5cc08",
+      "ts": "2026-09-04T08:40:57.229Z",
+      "kind": "module.added",
+      "subject": "slack",
+      "severity": "neutral",
+      "evidence": [],
+      "to": "248 lines",
+      "sha": "462209bfcac22eda316a433f3912b5b89f91f9a8"
+    },
+    {
+      "id": "b020fe4ff542",
+      "ts": "2026-09-04T08:40:57.229Z",
+      "kind": "module.added",
+      "subject": "llm",
+      "severity": "neutral",
+      "evidence": [],
+      "to": "114 lines",
+      "sha": "462209bfcac22eda316a433f3912b5b89f91f9a8"
+    },
+    {
+      "id": "e4b315a063ec",
+      "ts": "2026-09-04T08:40:57.229Z",
+      "kind": "module.added",
+      "subject": "core",
+      "severity": "neutral",
+      "evidence": [],
+      "to": "259 lines",
+      "sha": "462209bfcac22eda316a433f3912b5b89f91f9a8"
+    },
+    {
+      "id": "d38c6563b8e5",
+      "ts": "2026-09-04T08:40:57.229Z",
+      "kind": "invariant.count",
+      "subject": "declared",
+      "severity": "neutral",
+      "evidence": [],
+      "from": 148,
+      "to": 171,
+      "sha": "462209bfcac22eda316a433f3912b5b89f91f9a8"
+    }
+  ],
+  "modules": {
+    "app": {
+      "files": 3,
+      "lines": 900,
+      "budget": 1200,
+      "overBudget": false
+    },
+    "core": {
+      "files": 8,
+      "lines": 534,
+      "budget": 1200,
+      "overBudget": false
+    },
+    "llm": {
+      "files": 4,
+      "lines": 512,
+      "budget": 1200,
+      "overBudget": false
+    },
+    "slack": {
+      "files": 7,
+      "lines": 838,
+      "budget": 1200,
+      "overBudget": false
+    },
+    "store": {
+      "files": 3,
+      "lines": 213,
+      "budget": 1200,
+      "overBudget": false
+    }
+  }
+}

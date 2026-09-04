@@ -1,0 +1,124 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>State</title>
+<style>
+:root{--bg:#EFF2F5;--card:#fff;--ink:#12161C;--body:#2C343E;--muted:#6A7683;--line:#DCE2E9;--up:#0F766E;--down:#B4232A}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0C1015;--card:#141A21;--ink:#E9EDF2;--body:#BFC8D2;--muted:#8391A0;--line:#242E38;--up:#3FCFBC;--down:#F2777E}}
+:root[data-theme=dark]{--bg:#0C1015;--card:#141A21;--ink:#E9EDF2;--body:#BFC8D2;--muted:#8391A0;--line:#242E38;--up:#3FCFBC;--down:#F2777E}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--body);font:15px/1.55 ui-sans-serif,system-ui,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:40px 24px 80px;display:flex;flex-direction:column;gap:32px}
+h1{font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:600}
+.hero{display:flex;align-items:center;gap:16px}
+.dot{width:34px;height:34px;border-radius:50%;background:#B4232A;flex:none}
+.hero p{margin:0;font-size:22px;color:var(--ink);font-weight:600;letter-spacing:-.02em}
+.nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.num{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:14px 16px}
+.num b{display:block;font-size:26px;color:var(--ink);font-variant-numeric:tabular-nums}
+.num span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+li{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--down);border-radius:4px;padding:10px 14px;font-size:14px}
+li.ok{border-left-color:var(--up);color:var(--muted)}
+li b{color:var(--ink)}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:4px;background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px}
+th{text-align:left;padding:9px 14px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+td{padding:9px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr.up td:first-child{box-shadow:inset 3px 0 var(--up)}
+tr.down td:first-child{box-shadow:inset 3px 0 var(--down)}
+.nw{white-space:nowrap}
+code{font-family:ui-monospace,monospace;font-size:.9em;color:var(--ink)}
+footer{font-size:12px;color:var(--muted);font-family:ui-monospace,monospace}
+</style>
+<div class="wrap">
+  <div class="hero"><div class="dot"></div><p>Something declared is broken.</p></div>
+
+  <div class="nums">
+    <div class="num"><b>246/246</b><span>invariants with a test</span></div>
+    <div class="num"><b>0</b><span>failing tests</span></div>
+    <div class="num"><b>0</b><span>open regressions</span></div>
+  </div>
+
+  <section><h1>Where not to step</h1><ul><li><b>dirty snapshot</b> The latest snapshot measured a working tree with uncommitted changes.</li><li><b>coupling not measured</b> The gate had no change set to evaluate, so this says nothing about whether the rules hold.</li></ul></section>
+
+  <section><h1>What actually changed</h1>
+    <div class="scroll"><table>
+      <thead><tr><th>When</th><th>Kind</th><th>Subject</th><th>Change</th></tr></thead>
+      <tbody><tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>invariant.count</code></td>
+      <td>declared</td>
+      <td class="nw">234 → 246</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>invariant.count</code></td>
+      <td>declared</td>
+      <td class="nw">227 → 234</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>module.added</code></td>
+      <td>app</td>
+      <td class="nw">900 lines</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>invariant.count</code></td>
+      <td>declared</td>
+      <td class="nw">201 → 227</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>module.added</code></td>
+      <td>store</td>
+      <td class="nw">213 lines</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>invariant.count</code></td>
+      <td>declared</td>
+      <td class="nw">193 → 201</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>invariant.count</code></td>
+      <td>declared</td>
+      <td class="nw">184 → 193</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>invariant.count</code></td>
+      <td>declared</td>
+      <td class="nw">171 → 184</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>module.added</code></td>
+      <td>slack</td>
+      <td class="nw">248 lines</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>module.added</code></td>
+      <td>llm</td>
+      <td class="nw">114 lines</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>module.added</code></td>
+      <td>core</td>
+      <td class="nw">259 lines</td>
+    </tr>
+<tr class="neutral">
+      <td class="nw">2026-09-04</td>
+      <td class="nw"><code>invariant.count</code></td>
+      <td>declared</td>
+      <td class="nw">148 → 171</td>
+    </tr></tbody>
+    </table></div>
+  </section>
+
+  <footer>581abb0 (dirty) · Prove a request came from Slack before believing any of it (#8) · generated 2026-09-04 13:00 UTC<br>
+  A merge that moves nothing measurable produces no entry. This measures effect, not effort.</footer>
+</div>
