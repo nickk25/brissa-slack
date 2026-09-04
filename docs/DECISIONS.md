@@ -88,3 +88,47 @@ Each one is surface no human will audit.
 - **`typescript`** — types are the cheapest review a repository nobody reads can
   have. `tsc --noEmit` is the gate; the test runner strips types rather than
   compiling, so there is no build step to keep in sync.
+
+## Mutation testing runs, and what it found the first time
+
+`.github/workflows/mutation.yml` had been in this repository since the first
+commit and had never once run: it calls `npm run mutate` and reads
+`stryker.config.json`, and neither existed. The workflow came across from the
+scaffolding; its configuration did not. So the control the root contract names as
+the answer to "a test that exists but asserts nothing" was, for the whole life of
+this repository, a file that would have failed on its first invocation.
+
+**Stryker 10 cannot read a TypeScript 7 project.** Its sandbox rewrites
+`tsconfig.json` through `ts.parseConfigFileTextToJson`, which the native
+TypeScript 7 compiler no longer exports, and the run dies before mutating
+anything. `tsconfigFile` is therefore pointed at `no-tsconfig-rewrite.json`, a
+path that does not exist, which makes the preprocessor skip. That rewrite exists
+to fix `extends` and `include` paths inside the sandbox, and nothing here needs
+it: the test runner is `node --experimental-strip-types`, which never reads a
+tsconfig. Revisit when Stryker supports TypeScript 7 — it is a workaround with a
+real expiry, not a permanent arrangement.
+
+The first honest measurement, and the second after acting on it:
+
+| File | First run | After |
+| --- | --- | --- |
+| `src/llm/decide.ts` | **59.09** | **85.45** |
+| `src/core/ask.ts` | 73.02 | 73.02 |
+| `src/app/handle.ts` | 82.56 | 82.56 |
+| `src/slack/receive.ts` | 85.19 | 85.19 |
+| `src/core/render.ts` | 86.05 | 86.05 |
+| `src/slack/send.ts` | 87.18 | 87.18 |
+| `src/store/memory.ts` | 94.74 | 94.74 |
+| **Total** | 76.57 | **83.57** |
+
+`decide.ts` was the weakest file in the repository and it is the one where a
+fault costs a reader their message. Forty-five mutants survived there, and nearly
+all of them lived in the request: the fake model recorded only the system prompt,
+so nothing had ever asserted the JSON schema, the model id, the token budget or
+the user turn. Seven tests closed it.
+
+The floor was raised by raising a score, never by lowering the bar — the
+per-file ratchet in `tools/agentic/mutation-floor.mjs` stays empty, which is its
+goal state. Pinning `decide.ts` at 59.09 would have been the other option, and it
+would have recorded the weakest thing in the repository as acceptable.
+

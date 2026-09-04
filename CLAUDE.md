@@ -101,6 +101,7 @@ Generated from `package.json`. Do not edit by hand.
 | `npm run gate` | `node tools/agentic/gate.mjs` |
 | `npm run gate:plan` | `node tools/agentic/gate.mjs --plan` |
 | `npm run invariants` | `node tools/agentic/invariants.mjs` |
+| `npm run mutate` | `stryker run` |
 | `npm run state` | `node tools/agentic/state.mjs` |
 | `npm run state:snapshot` | `node tools/agentic/state.mjs snapshot` |
 | `npm run test` | `node --test 'tools/agentic/**/*.test.mjs' && node --experimental-strip-types --test 'src/**/*.test.ts'` |
