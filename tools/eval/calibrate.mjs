@@ -31,7 +31,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 const ROOT = process.cwd()
-const CORPUS = join(ROOT, 'fixtures/corpus/messages.json')
+const CORPUS_DIR = join(ROOT, 'fixtures/corpus')
 const PROMPT = join(ROOT, 'src/llm/prompts/decide.md')
 
 const arg = (name, fallback) => {
@@ -99,9 +99,14 @@ async function once(client, model, system, message) {
 
 async function main() {
   const model = arg('model', 'claude-sonnet-5')
+  // Which set. `messages` is the one a prompt may be tuned against; `held-out`
+  // is the one that only means anything because nobody looked at it while
+  // writing the prompt. Running it is allowed; consulting its failures to decide
+  // what the prompt should say is what spends it.
+  const corpusName = arg('corpus', 'messages')
   const runs = Number(arg('runs', '3'))
-  const out = arg('out', `fixtures/evals/${model}.json`)
-  const corpus = JSON.parse(readFileSync(CORPUS, 'utf8'))
+  const out = arg('out', `fixtures/evals/${corpusName === 'messages' ? model : `${corpusName}-${model}`}.json`)
+  const corpus = JSON.parse(readFileSync(join(CORPUS_DIR, `${corpusName}.json`), 'utf8'))
   const { text: system, hash: promptHash } = buildPrompt(corpus.reads, corpus.reads[0])
 
   const client = new Anthropic()
@@ -141,6 +146,7 @@ async function main() {
   const flaky = measured.filter((r) => !r.stable)
   const report = {
     model,
+    corpus: corpusName,
     promptHash,
     ranAt: new Date().toISOString(),
     runs,
@@ -162,7 +168,7 @@ async function main() {
   mkdirSync(dirname(join(ROOT, out)), { recursive: true })
   writeFileSync(join(ROOT, out), `${JSON.stringify(report, null, 2)}\n`)
 
-  console.log(`${model}  prompt ${promptHash}  ${runs} runs per case`)
+  console.log(`${model}  ${corpusName}  prompt ${promptHash}  ${runs} runs per case`)
   console.log(`  agreed every time ${report.agreed}/${report.measured}`)
   console.log(`  flaky             ${report.flaky.map((f) => f.id).join(', ') || 'none'}`)
   console.log(`  missed            ${report.missedTranslations.join(', ') || 'none'}`)

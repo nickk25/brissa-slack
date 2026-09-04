@@ -24,7 +24,7 @@ import { join } from 'node:path'
 
 const ROOT = process.cwd()
 const PROMPTS = join(ROOT, 'src/llm/prompts')
-const CORPUS = join(ROOT, 'fixtures/corpus/messages.json')
+const CORPUS_DIR = join(ROOT, 'fixtures/corpus')
 
 /**
  * Long enough that a shared phrase is quotation rather than coincidence, short
@@ -47,7 +47,8 @@ function windows(text) {
   return out
 }
 
-if (!existsSync(CORPUS)) {
+const corpusFiles = existsSync(CORPUS_DIR) ? readdirSync(CORPUS_DIR).filter((f) => f.endsWith('.json')) : []
+if (corpusFiles.length === 0) {
   console.error('No corpus found. This check has nothing to compare against, which is not the same as passing.')
   process.exit(2)
 }
@@ -56,17 +57,17 @@ if (!existsSync(PROMPTS)) {
   process.exit(2)
 }
 
-const corpus = JSON.parse(readFileSync(CORPUS, 'utf8'))
+const cases = corpusFiles.flatMap((f) => JSON.parse(readFileSync(join(CORPUS_DIR, f), 'utf8')).cases.map((c) => ({ ...c, from: f })))
 const prompts = readdirSync(PROMPTS).filter((f) => f.endsWith('.md'))
 
 const found = []
 for (const file of prompts) {
   const prompt = normalise(readFileSync(join(PROMPTS, file), 'utf8'))
-  for (const c of corpus.cases) {
+  for (const c of cases) {
     const text = normalise(c.text)
     if (text.length < WINDOW) continue // too short to quote distinctively
     const quoted = [...windows(text)].filter((w) => prompt.includes(w))
-    if (quoted.length > 0) found.push({ file, id: c.id, sample: quoted[0] })
+    if (quoted.length > 0) found.push({ file, id: `${c.from}:${c.id}`, sample: quoted[0] })
   }
 }
 
@@ -82,4 +83,4 @@ if (found.length > 0) {
   process.exit(1)
 }
 
-console.log(`✓ no prompt quotes the corpus (${prompts.length} prompt(s), ${corpus.cases.length} case(s)).`)
+console.log(`✓ no prompt quotes the corpus (${prompts.length} prompt(s), ${cases.length} case(s) across ${corpusFiles.length} set(s)).`)

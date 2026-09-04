@@ -19,6 +19,29 @@ punctuation, emoji, line breaks, length and structure.
 
 The corpus has to be **real in its language, not in its facts.**
 
+## Two sets, and what spends the second one
+
+`messages.json` is the development set. A prompt may be tuned against it: read
+which cases fail, change the wording, measure again.
+
+`held-out.json` is not. Running it is fine — that is what it is for. **Reading
+which of its cases failed and changing the prompt because of it spends it**, and
+once spent it cannot be un-spent; it becomes a second development set wearing the
+name of a reserve.
+
+The rule is uncomfortable on purpose. Tuning a prompt by looking at what fails is
+tuning to the evaluation set even when nothing is quoted, and the only defence is
+a set whose failures you decline to look at. If the held-out score drops, the
+honest response is to look at the *development* set for the same weakness, not to
+open the reserve.
+
+The held-out set deliberately carries more `ignore` cases than `translate` ones:
+16 to 10, against 5 to 23 in the development set. Restraint is the product and
+the development set barely measured it. It also carries a direction the
+development set has none of — **German embedded in English**, where the reader
+needs nothing and translating is pure noise. That is the harder half of the
+problem and it was invisible before.
+
 ## Two layers, and only one of them blocks
 
 | Layer | Measures | When |

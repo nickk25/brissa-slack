@@ -52,9 +52,21 @@ The corpus was already protected by a human label because whoever can edit the
 expected answer can never be wrong. That guarded one side of the exam; this was
 the other side, and it went unnoticed until somebody walked straight through it.
 
-**Still open:** a held-out split. Even with nothing quoted, tuning a prompt by
-looking at which cases fail is tuning to the evaluation set. Closing it needs
-cases the prompt's author never sees, which needs more corpus than exists today.
+**Closed:** a held-out split now exists. 26 further cases, drawn from channels the
+development set never touched, scored 26/26 with nothing unstable.
+
+The rule attached to it matters more than the score: running it is fine, and
+reading which of its cases failed in order to change the prompt spends it. Once
+spent it becomes a second development set wearing the name of a reserve. If the
+held-out score drops, the honest move is to look for the same weakness in the
+development set.
+
+It is weighted the other way on purpose — 16 `ignore` to 10 `translate`, against
+5 to 23 in the development set. Restraint is the product and the development set
+barely measured it. It also carries a direction the development set had none of:
+**German embedded in English**, where the reader needs nothing and translating is
+pure noise. That is the harder half of the problem and nothing measured it
+before.
 
 ## Transient failures are retried
 

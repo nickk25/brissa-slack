@@ -1,0 +1,451 @@
+{
+  "model": "claude-sonnet-5",
+  "corpus": "held-out",
+  "promptHash": "ac4def48cc2e",
+  "ranAt": "2026-09-04T09:28:56.827Z",
+  "runs": 3,
+  "cases": 26,
+  "measured": 26,
+  "agreed": 26,
+  "flaky": [],
+  "missedTranslations": [],
+  "needlessTranslations": [],
+  "errors": [],
+  "results": [
+    {
+      "id": "h-001",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "german-in-english",
+        "quoted-terms",
+        "emoji"
+      ]
+    },
+    {
+      "id": "h-002",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "german-in-english",
+        "quoted-terms",
+        "typos"
+      ]
+    },
+    {
+      "id": "h-003",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "code-switching-intra",
+        "short"
+      ]
+    },
+    {
+      "id": "h-004",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "german-in-english",
+        "quoted-terms"
+      ]
+    },
+    {
+      "id": "h-005",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "negative-en",
+        "non-native-english",
+        "mention",
+        "emoticon"
+      ]
+    },
+    {
+      "id": "h-006",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "negative-en",
+        "non-native-english",
+        "emoji"
+      ]
+    },
+    {
+      "id": "h-007",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "negative-en",
+        "non-native-english"
+      ]
+    },
+    {
+      "id": "h-008",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "negative-en",
+        "playful-spelling",
+        "short"
+      ]
+    },
+    {
+      "id": "h-009",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "clean-german",
+        "short"
+      ]
+    },
+    {
+      "id": "h-010",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "clean-german",
+        "short",
+        "fragment"
+      ]
+    },
+    {
+      "id": "h-011",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "clean-german"
+      ]
+    },
+    {
+      "id": "h-012",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "clean-german",
+        "wrong-lowercase"
+      ]
+    },
+    {
+      "id": "h-013",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "formal-german",
+        "dates-times",
+        "numeric-format",
+        "spaced-punctuation"
+      ]
+    },
+    {
+      "id": "h-014",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "german-quotes",
+        "loanword",
+        "untranslatable-ui"
+      ]
+    },
+    {
+      "id": "h-015",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "formal-german",
+        "multi-line",
+        "numbered-list",
+        "markdown",
+        "german-quotes",
+        "dates-times"
+      ]
+    },
+    {
+      "id": "h-016",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "template",
+        "placeholders",
+        "formal-german",
+        "signature",
+        "inline-code"
+      ]
+    },
+    {
+      "id": "h-017",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "nothing-to-read",
+        "emoji"
+      ]
+    },
+    {
+      "id": "h-018",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "nothing-to-read",
+        "link"
+      ]
+    },
+    {
+      "id": "h-019",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "nothing-to-read",
+        "mention"
+      ]
+    },
+    {
+      "id": "h-020",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "nothing-to-read",
+        "emoji"
+      ]
+    },
+    {
+      "id": "h-021",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "negative-en",
+        "link",
+        "short"
+      ]
+    },
+    {
+      "id": "h-022",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "negative-en",
+        "acronym",
+        "emoji"
+      ]
+    },
+    {
+      "id": "h-023",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "code-switching-intra",
+        "loanword",
+        "short"
+      ]
+    },
+    {
+      "id": "h-024",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "negative-en",
+        "non-native-english"
+      ]
+    },
+    {
+      "id": "h-025",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "clean-german",
+        "dates-times",
+        "short"
+      ]
+    },
+    {
+      "id": "h-026",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "short-ambiguous"
+      ]
+    }
+  ]
+}
