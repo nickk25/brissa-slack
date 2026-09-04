@@ -68,6 +68,19 @@ A real refusal — a missing scope, a bad token, malformed blocks — is a diffe
 outcome with a different owner, and collapsing the two would hide a bug behind an
 expected silence.
 
+## The field names stop here
+
+`ephemeralFor` builds one reader's copy of a translation. It exists so that no
+other module has to know our `threadId` is Slack's `thread_ts`: `receive`
+performs that rename on the way in, and without this the rename on the way out
+would live in the wiring — precisely the knowledge this boundary exists to
+contain.
+
+A top-level message gets **no** `thread_ts` key rather than one set to
+`undefined`. Slack reads a present-but-empty `thread_ts` as a malformed request
+instead of as a top-level post, and under `exactOptionalPropertyTypes` those are
+genuinely different values.
+
 ## Invariants of sending
 
 - A delivered ephemeral says so. `test: INV-slack-10`
@@ -86,3 +99,11 @@ expected silence.
 
 The shortcut. And a real client: `SlackApi` is one method wide, which is all this
 module needs and all its tests require, but nothing yet implements it.
+
+## Invariants of addressing
+
+- A translation is addressed to one channel and one reader. `test: INV-slack-16`
+- Our thread becomes Slack's thread here and nowhere else; a top-level message
+  carries no thread key at all. `test: INV-slack-17`
+- The notification carries the translation, truncated — not the blocks, and not
+  the untruncated text. `test: INV-slack-18`
