@@ -56,6 +56,6 @@ for (const r of recorded) {
   // agreed, even if a third of the corpus never got an answer. The case count
   // is the part that says whether the score covers the corpus at all.
   const gap = r.measured < r.cases ? `  (${r.cases - r.measured} of ${r.cases} unmeasured)` : ''
-  console.log(`${r.model}  prompt ${r.promptHash}  agreed ${r.agreed}/${r.measured} of ${r.cases}${gap}`)
+  console.log(`${r.model}  ${r.corpus ?? 'messages'}  prompt ${r.promptHash}  agreed ${r.agreed}/${r.measured} of ${r.cases}${gap}`)
 }
 console.log(`✓ every prompt has a recorded evaluation of its current text.`)

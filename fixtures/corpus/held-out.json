@@ -1,0 +1,390 @@
+{
+  "_": "Held-out corpus. Never consulted while writing or tuning a prompt — see README.md.",
+  "reads": [
+    "es",
+    "en"
+  ],
+  "cases": [
+    {
+      "id": "h-001",
+      "text": "we need new pictures for the landing for \"Ernährungsberatung\" and \"Reisemedizin\". Shall we ask Persona H to buy new ones? Or do you know what the status is regarding the pictures now? :slightly_smiling_face:",
+      "languages": [
+        "en",
+        "de"
+      ],
+      "categories": [
+        "german-in-english",
+        "quoted-terms",
+        "emoji"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "An English sentence with German service names in quotes. The reader reads English, so there is nothing here they could not read — translating would be noise. The mirror of the dev set's cases, and harder."
+    },
+    {
+      "id": "h-002",
+      "text": "I marked the Service type \"Dringender Termin\" as \"not public\" and it stills shows on the landing page. Is that supposed to be like that?",
+      "languages": [
+        "en",
+        "de"
+      ],
+      "categories": [
+        "german-in-english",
+        "quoted-terms",
+        "typos"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "English with a quoted German product term and a typo. Still English."
+    },
+    {
+      "id": "h-003",
+      "text": "Ja thats me",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "categories": [
+        "code-switching-intra",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "ignore",
+      "note": "A German particle opening an English sentence. Two words of it are English and the whole thing is understood by an English reader — the exception the restraint rule exists for, in a shape the dev set never had."
+    },
+    {
+      "id": "h-004",
+      "text": "The button now says 'Verlassen' instead of 'Speichern und verlassen'",
+      "languages": [
+        "en",
+        "de"
+      ],
+      "categories": [
+        "german-in-english",
+        "quoted-terms"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "Quoted UI strings in German inside an English sentence. Translating the quotes would break the thing being discussed."
+    },
+    {
+      "id": "h-005",
+      "text": "Hi guys, how are you?:) @persona can we provide prod api for the triage for EmpresaB today? They need to be ready tomorrow for Persona E to have some time to prepare the updated for the pharmacies:)",
+      "languages": [
+        "en"
+      ],
+      "categories": [
+        "negative-en",
+        "non-native-english",
+        "mention",
+        "emoticon"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "English written by a non-native speaker: bent grammar, an emoticon rather than an emoji. A model looking for 'correct English' could mistake this for another language."
+    },
+    {
+      "id": "h-006",
+      "text": "Woow, the water really disappear as you said in the meeting :joy:",
+      "languages": [
+        "en"
+      ],
+      "categories": [
+        "negative-en",
+        "non-native-english",
+        "emoji"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "A missing verb agreement is not a foreign language."
+    },
+    {
+      "id": "h-007",
+      "text": "Almost the same like Persona A's beach :sweat_smile:",
+      "languages": [
+        "en"
+      ],
+      "categories": [
+        "negative-en",
+        "non-native-english"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "A calque from German word order, in English. Still English."
+    },
+    {
+      "id": "h-008",
+      "text": "Yeees",
+      "languages": [
+        "en"
+      ],
+      "categories": [
+        "negative-en",
+        "playful-spelling",
+        "short"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "Stretched spelling. Nothing to translate and nothing to correct."
+    },
+    {
+      "id": "h-009",
+      "text": "Schaue es mir morgen an.",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "clean-german",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Short, ordinary German. No English anywhere to distract a detector."
+    },
+    {
+      "id": "h-010",
+      "text": "Zumindest mit einigen Praxen",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "clean-german",
+        "short",
+        "fragment"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "A sentence fragment, which is most of how people write in chat."
+    },
+    {
+      "id": "h-011",
+      "text": "Die Plattform deckt technisch schon alles ab, soweit ich lese",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "clean-german"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Plain German with no borrowed words at all."
+    },
+    {
+      "id": "h-012",
+      "text": "Ich bin da schon doppelt belegt. Eins könnte ich verschieben, das andere nicht. Sagt bescheid, wenn ich das eine verlegen soll",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "clean-german",
+        "wrong-lowercase"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Three sentences, and 'Sagt bescheid' should be capitalised — a typo that must not confuse the model."
+    },
+    {
+      "id": "h-013",
+      "text": "Frage in die Runde: Wer hat die Unterlagen ausführlich gelesen ? Dazu sollten wir sehr zeitnah gemeinsam in den Austausch gehen, um zu bewerten, was es braucht. Wie sieht es bei Euch terminlich morgen Vormittag von 09.00 - 11.00 Uhr und 13.00 - 14.30 Uhr aus ?",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "formal-german",
+        "dates-times",
+        "numeric-format",
+        "spaced-punctuation"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "Formal German with spaces before question marks and 24-hour ranges in German notation. The times must survive untouched."
+    },
+    {
+      "id": "h-014",
+      "text": "Ein Fehler wurde behoben, bei dem das Dropdown-Menü „Titel\" in bestimmten Fenstern nicht sichtbar war.",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "categories": [
+        "german-quotes",
+        "loanword",
+        "untranslatable-ui"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "German with a low quotation mark and 'Dropdown-Menü' — a compound built on an English word. The quoted UI label is a string in the product and is not translated."
+    },
+    {
+      "id": "h-015",
+      "text": "*Update für Nutzer – Woche vom 28. Juli bis 7. August*\n*Während der Sitzung*\n1. Wenn Sie einen Anruf durch Auflegen beenden, wird der Termin jetzt automatisch als abgeschlossen markiert.\n2. Die Dokumentation lässt sich auch nach dem Abschließen weiter bearbeiten.\n3. Der Button „Behandlung abschließen\" wurde verschoben.",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "formal-german",
+        "multi-line",
+        "numbered-list",
+        "markdown",
+        "german-quotes",
+        "dates-times"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "A structured changelog: bold markers, a numbered list, quoted UI labels and a date range. The structure is the message as much as the words are."
+    },
+    {
+      "id": "h-016",
+      "text": "*Betreff:* Ihr verpasster Termin – Jetzt neuen Termin vereinbaren\nSehr geehrte/r `[Anrede] [Nachname],`\nwir haben festgestellt, dass Sie Ihren Termin am `[Datum]` um `[Uhrzeit]` leider nicht wahrnehmen konnten.\nMit freundlichen Grüßen\nEmpresaA",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "template",
+        "placeholders",
+        "formal-german",
+        "signature",
+        "inline-code"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "A German template whose placeholders sit in inline code. They are neither translated nor filled in. Content neutralised."
+    },
+    {
+      "id": "h-017",
+      "text": ":rocket::rocket:",
+      "languages": [],
+      "categories": [
+        "nothing-to-read",
+        "emoji"
+      ],
+      "startsIn": "",
+      "expected": "ignore",
+      "note": "Two emoji. There is no sentence here for any language to be in."
+    },
+    {
+      "id": "h-018",
+      "text": "<https://ejemplo.test/aviso/591442-2026>",
+      "languages": [],
+      "categories": [
+        "nothing-to-read",
+        "link"
+      ],
+      "startsIn": "",
+      "expected": "ignore",
+      "note": "A bare link. Asking would spend a model call to be told what the shape already says."
+    },
+    {
+      "id": "h-019",
+      "text": "<@persona>",
+      "languages": [],
+      "categories": [
+        "nothing-to-read",
+        "mention"
+      ],
+      "startsIn": "",
+      "expected": "ignore",
+      "note": "A mention with no words — someone getting somebody's attention."
+    },
+    {
+      "id": "h-020",
+      "text": ":heart_hands::skin-tone-3:",
+      "languages": [],
+      "categories": [
+        "nothing-to-read",
+        "emoji"
+      ],
+      "startsIn": "",
+      "expected": "ignore",
+      "note": "An emoji with a skin-tone modifier, which is two tokens and still not a sentence."
+    },
+    {
+      "id": "h-021",
+      "text": "let's GO\n\n<https://ejemplo.test/aviso/591442-2026>",
+      "languages": [
+        "en"
+      ],
+      "categories": [
+        "negative-en",
+        "link",
+        "short"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "English plus a link. The link is not a language."
+    },
+    {
+      "id": "h-022",
+      "text": "Persona C from EmpresaB reached out to me, they are ready for the next steps for API Integration:tada:",
+      "languages": [
+        "en"
+      ],
+      "categories": [
+        "negative-en",
+        "acronym",
+        "emoji"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "English with an acronym and an emoji glued to the last word."
+    },
+    {
+      "id": "h-023",
+      "text": "kurz zum Punkt: das ist die Go/No-Go-Frage",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "categories": [
+        "code-switching-intra",
+        "loanword",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "German built around an English compound. The grammar is German; the borrowed noun does not change that."
+    },
+    {
+      "id": "h-024",
+      "text": "for that we need to move to prod our triage too",
+      "languages": [
+        "en"
+      ],
+      "categories": [
+        "negative-en",
+        "non-native-english"
+      ],
+      "startsIn": "en",
+      "expected": "ignore",
+      "note": "English with Spanish word order. A speaker of neither would still read it as English."
+    },
+    {
+      "id": "h-025",
+      "text": "Morgen 13-14 Uhr passt auch bei mir",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "clean-german",
+        "dates-times",
+        "short"
+      ],
+      "startsIn": "de",
+      "expected": "translate",
+      "note": "'Morgen' is tomorrow, not morning, and the range is written the German way."
+    },
+    {
+      "id": "h-026",
+      "text": "Danke dir!",
+      "languages": [
+        "de"
+      ],
+      "categories": [
+        "short-ambiguous"
+      ],
+      "startsIn": "de",
+      "expected": "ignore",
+      "note": "A courtesy anyone understands. The counterpart to h-025: both short, both German, only one worth a translation."
+    }
+  ]
+}
