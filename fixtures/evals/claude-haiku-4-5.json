@@ -1,0 +1,503 @@
+{
+  "model": "claude-haiku-4-5",
+  "promptHash": "ac4def48cc2e",
+  "ranAt": "2026-09-03T13:28:06.336Z",
+  "runs": 3,
+  "cases": 28,
+  "measured": 28,
+  "agreed": 24,
+  "flaky": [
+    {
+      "id": "c-027",
+      "answers": [
+        "ignore",
+        "translate",
+        "translate"
+      ]
+    }
+  ],
+  "missedTranslations": [
+    "c-004",
+    "c-006",
+    "c-013"
+  ],
+  "needlessTranslations": [],
+  "errors": [],
+  "results": [
+    {
+      "id": "c-001",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "starts-in-another-language",
+        "missing-umlauts",
+        "typos",
+        "long",
+        "multi-paragraph"
+      ]
+    },
+    {
+      "id": "c-002",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "code-switching-intra",
+        "missing-umlauts",
+        "typos",
+        "short"
+      ]
+    },
+    {
+      "id": "c-003",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "code-switching-intra",
+        "missing-umlauts",
+        "nested-quote"
+      ]
+    },
+    {
+      "id": "c-004",
+      "expected": "translate",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": false,
+      "errors": [],
+      "categories": [
+        "false-friend",
+        "missing-umlauts",
+        "short",
+        "numbers"
+      ]
+    },
+    {
+      "id": "c-005",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "missing-umlauts",
+        "short",
+        "informal-grammar"
+      ]
+    },
+    {
+      "id": "c-006",
+      "expected": "translate",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": false,
+      "errors": [],
+      "categories": [
+        "code-switching-intra",
+        "loanword",
+        "untranslatable-standard"
+      ]
+    },
+    {
+      "id": "c-007",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "clean-german",
+        "with-umlauts",
+        "emphatic-quotes"
+      ]
+    },
+    {
+      "id": "c-008",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "loanword",
+        "emoji",
+        "short"
+      ]
+    },
+    {
+      "id": "c-009",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "acronym",
+        "emoji",
+        "short"
+      ]
+    },
+    {
+      "id": "c-010",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "product-names",
+        "place-name",
+        "short"
+      ]
+    },
+    {
+      "id": "c-011",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "short-ambiguous",
+        "product-names",
+        "emoji"
+      ]
+    },
+    {
+      "id": "c-012",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "short-ambiguous"
+      ]
+    },
+    {
+      "id": "c-013",
+      "expected": "translate",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": false,
+      "errors": [],
+      "categories": [
+        "short-ambiguous"
+      ]
+    },
+    {
+      "id": "c-014",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "dates-times",
+        "short"
+      ]
+    },
+    {
+      "id": "c-015",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "dates-times",
+        "numeric-format"
+      ]
+    },
+    {
+      "id": "c-016",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "clean-german",
+        "wrong-lowercase"
+      ]
+    },
+    {
+      "id": "c-017",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "mention",
+        "untranslatable-name",
+        "short"
+      ]
+    },
+    {
+      "id": "c-018",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "mention",
+        "typographic-apostrophe",
+        "short"
+      ]
+    },
+    {
+      "id": "c-019",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "link",
+        "slack-syntax",
+        "untranslatable-url"
+      ]
+    },
+    {
+      "id": "c-020",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "formal-german",
+        "multi-line",
+        "terminology",
+        "untranslatable-standard"
+      ]
+    },
+    {
+      "id": "c-021",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "long",
+        "multi-paragraph",
+        "numbered-list",
+        "mention",
+        "loanword",
+        "german-quotes",
+        "legal-reference"
+      ]
+    },
+    {
+      "id": "c-022",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "code-switching-intra",
+        "es-en",
+        "typos"
+      ]
+    },
+    {
+      "id": "c-023",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "negative-en",
+        "short"
+      ]
+    },
+    {
+      "id": "c-024",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "negative-es",
+        "short"
+      ]
+    },
+    {
+      "id": "c-025",
+      "expected": "ignore",
+      "answers": [
+        "ignore",
+        "ignore",
+        "ignore"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "negative-es"
+      ]
+    },
+    {
+      "id": "c-026",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "starts-in-another-language",
+        "template",
+        "placeholders",
+        "signature"
+      ]
+    },
+    {
+      "id": "c-027",
+      "expected": "translate",
+      "answers": [
+        "ignore",
+        "translate",
+        "translate"
+      ],
+      "stable": false,
+      "agreed": false,
+      "errors": [],
+      "categories": [
+        "dates-times",
+        "numeric-format",
+        "short"
+      ]
+    },
+    {
+      "id": "c-028",
+      "expected": "translate",
+      "answers": [
+        "translate",
+        "translate",
+        "translate"
+      ],
+      "stable": true,
+      "agreed": true,
+      "errors": [],
+      "categories": [
+        "modal-particle",
+        "product-names",
+        "short"
+      ]
+    }
+  ]
+}

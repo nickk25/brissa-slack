@@ -17,17 +17,27 @@
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
+import { compile } from '../lib/glob.mjs'
 
 const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.agentic'])
 const ROOT = process.cwd()
 
-// The one definition of "the suite". `package.json`'s test script points Node
-// at this same pattern, quoted so Node expands it rather than sh — sh collapses
-// `**` to `*` and would reach only one level down, which would let a claim be
-// proven by a test the suite never runs.
-const TEST_DIR = 'tools/agentic'
-const TEST_FILE_RE = /\.test\.mjs$/
+// The one definition of "the suite", and the only place the engine is told
+// anything about the project it governs.
+//
+// A consuming repository declares its own under `agentic.tests` in package.json:
+//
+//   "agentic": { "tests": {
+//     "files": ["tools/agentic/**/*.test.mjs", "src/**/*.test.ts"],
+//     "nodeArgs": ["--experimental-strip-types"]
+//   } }
+//
+// A hard-coded directory and extension made the comment that used to sit here
+// false: a project whose tests live anywhere else, or end in anything else, had
+// every one of its invariants reported as untested on its first run. The
+// defaults below are this repository's own, so a project that never sets the
+// key sees no change.
 
 // Node's own test runner sets NODE_TEST_CONTEXT on itself; a child `node
 // --test` process that inherits it assumes it is being driven by a parent
@@ -57,10 +67,24 @@ function walk(dir, out = []) {
   return out
 }
 
-/** Every `*.test.mjs` file inside the directory the real test run covers. */
-export function discoverTestFiles(root = ROOT) {
+/** What this project calls its suite, defaulting to this repository's own. */
+export function testConfig(root = ROOT) {
   try {
-    return walk(join(root, TEST_DIR)).filter((f) => TEST_FILE_RE.test(f))
+    const declared = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).agentic?.tests ?? {}
+    return {
+      files: Array.isArray(declared.files) && declared.files.length ? declared.files : ['tools/agentic/**/*.test.mjs'],
+      nodeArgs: Array.isArray(declared.nodeArgs) ? declared.nodeArgs : [],
+    }
+  } catch {
+    return { files: ['tools/agentic/**/*.test.mjs'], nodeArgs: [] }
+  }
+}
+
+/** Every file the declared globs match. */
+export function discoverTestFiles(root = ROOT) {
+  const patterns = testConfig(root).files.map((f) => compile(f).re)
+  try {
+    return walk(root).filter((abs) => patterns.some((re) => re.test(relative(root, abs).split(sep).join('/'))))
   } catch {
     return []
   }
@@ -178,6 +202,8 @@ export function runSuite(root, relFiles) {
   // A failing suite emits a diagnostic block per failure, so output grows
   // fastest exactly when it matters most; maxBuffer covers both streams.
   const r = spawnSync('node', [
+    // A project whose tests are not plain JavaScript says so here, once.
+    ...testConfig(root).nodeArgs,
     '--test', '--test-reporter=tap', '--test-reporter-destination=stdout',
     '--test-reporter', FILE_REPORTER, '--test-reporter-destination=stderr',
     ...relFiles,

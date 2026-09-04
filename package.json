@@ -9,20 +9,38 @@
     "node": ">=22"
   },
   "scripts": {
+    "calibrate": "node --env-file-if-exists=.env tools/eval/calibrate.mjs",
     "contracts": "node tools/agentic/contracts.mjs",
     "contracts:check": "node tools/agentic/contracts.mjs --check",
+    "eval:check": "node tools/eval/contamination.mjs && node tools/eval/check.mjs",
+    "eval:contamination": "node tools/eval/contamination.mjs",
     "gate": "node tools/agentic/gate.mjs",
     "gate:plan": "node tools/agentic/gate.mjs --plan",
     "invariants": "node tools/agentic/invariants.mjs",
     "state": "node tools/agentic/state.mjs",
     "state:snapshot": "node tools/agentic/state.mjs snapshot",
-    "test": "node --test 'tools/agentic/**/*.test.mjs'",
-    "verify": "npm run contracts:check && npm run invariants && npm test && npm run gate"
+    "test": "node --test 'tools/agentic/**/*.test.mjs' && node --experimental-strip-types --test 'src/**/*.test.ts'",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run contracts:check && npm run invariants && npm test && npm run gate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.123.0",
     "yaml": "^2.8.1"
   },
   "devDependencies": {
-    "@stryker-mutator/core": "^10.0.0"
+    "@stryker-mutator/core": "^10.0.0",
+    "@types/node": "^26.4.1",
+    "typescript": "^7.0.2"
+  },
+  "agentic": {
+    "tests": {
+      "files": [
+        "tools/agentic/**/*.test.mjs",
+        "src/**/*.test.ts"
+      ],
+      "nodeArgs": [
+        "--experimental-strip-types"
+      ]
+    }
   }
 }
