@@ -56,7 +56,7 @@ Two decisions everything else follows from:
 | `src/core/` | All the logic. Pure: no I/O, no SDK, no clock, no randomness. |
 | `src/llm/` | The only module that imports the Anthropic SDK. |
 | `src/slack/` | The only module that imports the Slack SDK. |
-| `src/store/` | The only module that talks to the database. |
+| `src/store/` | Who reads what, and what Brissa may do in a channel. No database yet. |
 | `src/app/` | Wiring, config, startup. |
 | `fixtures/corpus/` | Real messages and the decision each should produce. Protected. |
 | `coupling.yaml` | This repository's rules. Also the schema reference. |

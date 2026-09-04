@@ -22,8 +22,14 @@ That is the point twice over: silence is the product, and a message that never
 reaches the model costs nothing.
 
 It returns a **reason** rather than a boolean. Silence is the common case here,
-not the exception, and an unexplained silence is indistinguishable from a bug —
-every reason becomes a counter on the state page.
+not the exception, and an unexplained silence is indistinguishable from a bug.
+
+An earlier version of this line claimed every reason becomes a counter on the
+state page. It does not, and nothing did: `npm run state` measures the
+*repository* — tests, invariants, coupling, module size — and knows nothing about
+messages. The reasons are carried so that whoever asks "why did nothing happen"
+gets an answer; where they are counted is still an open question, and a contract
+that answered it in advance was a contract stating something false.
 
 ## Invariants
 
@@ -86,6 +92,23 @@ the other is somebody's job.
 The port lives here rather than in `src/llm` so the core owns the shape of the
 question. An interface declared in the adapter would let the SDK's vocabulary
 cross back one field at a time.
+
+## Two ports, and why both are declared here
+
+`translator.ts` asks for a translation. `directory.ts` asks who reads what in a
+channel. Neither is called by anything in this module, and both belong here
+anyway: the core owns the shape of the question, and an interface declared in the
+module that answers it would let that module's vocabulary — a table name, a row,
+an SDK type — cross back one field at a time.
+
+The rule that keeps this honest is narrow and absolute: **no function in
+`src/core` ever takes a port as a parameter.** `shouldAsk`, `hasNothingToRead`,
+`renderTranslation` and `escapeMrkdwn` are synchronous and take data. The first
+time one of them accepts a `Directory` so it can be "tested properly", the core
+has a clock and the boundary is decoration.
+
+A `Promise` in an interface is not I/O. Declaring one costs this module nothing;
+awaiting one would cost it everything, and `src/app` is what awaits.
 
 ## Cost note
 
