@@ -124,7 +124,7 @@ async function serveGroup(
   // Rendered once for the whole group. `renderTranslation` is pure over the
   // translation and knows nothing about who is reading it; only the send is per
   // person.
-  const blocks = renderTranslation(result.translation)
+  const blocks = renderTranslation(result.translation, { authorId: message.authorId, text: message.text })
 
   await Promise.all(
     readers.map(async (r) => {

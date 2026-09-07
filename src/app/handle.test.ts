@@ -91,7 +91,7 @@ test('INV-app-01 one message reaches every reader who needed it, and nobody else
 
   const expected = {
     channel: 'C1',
-    blocks: renderTranslation({ text: SPANISH, foundLanguages: ['de'] }),
+    blocks: renderTranslation({ text: SPANISH, foundLanguages: ['de'] }, { authorId: 'U-jens', text: GERMAN }),
     text: fallbackText(SPANISH),
   }
   assert.deepEqual(s.posts, [
@@ -365,7 +365,7 @@ test('INV-app-17 escaping survives the seam between rendering and sending', asyn
 
   const section = s.posts[0]?.blocks[0]
   assert.ok(section?.type === 'section')
-  assert.equal(section.text.text, 'Usa &lt;b&gt; y &amp; luego dime')
+  assert.ok(section.text.text.endsWith('\nUsa &lt;b&gt; y &amp; luego dime'))
 })
 
 test('INV-app-18 the same event twice does the work twice, because deduplication is not this function’s job', async () => {
@@ -421,7 +421,9 @@ test('INV-app-19 the real adapters compose: a Slack event becomes an ephemeral w
       channel: 'C1',
       user: 'U-nick',
       blocks: [
-        { type: 'section', text: { type: 'mrkdwn', text: SPANISH } },
+        // The literal a reader sees: who wrote it, enough of their words to
+        // recognise, then the translation underneath.
+        { type: 'section', text: { type: 'mrkdwn', text: `> <@U-jens>: ${GERMAN}\n${SPANISH}` } },
         { type: 'context', elements: [{ type: 'mrkdwn', text: 'Translated from German · only visible to you' }] },
       ],
       text: fallbackText(SPANISH),
@@ -445,7 +447,7 @@ test('INV-app-20 the reader gets the whole translation and the notification gets
   const post = s.posts[0]
   const section = post?.blocks[0]
   assert.ok(section?.type === 'section')
-  assert.equal(section.text.text, long)
+  assert.ok(section.text.text.endsWith(`\n${long}`))
   assert.equal(post?.text, fallbackText(long))
   assert.ok((post?.text.length ?? 0) <= 120)
   assert.notEqual(post?.text, long)

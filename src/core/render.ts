@@ -8,6 +8,13 @@
  * The whole design pressure here is downward. This appears unprompted, under
  * somebody else's message, in a channel shared with a client. Every element
  * earns its place or it is noise attached to something the reader did want.
+ *
+ * The one element that had to be added rather than removed is the anchor. An
+ * ephemeral does not attach to the message it translates; it lands at the bottom
+ * of the channel like any other message, only nobody else sees it. Two foreign
+ * messages in a row therefore produce two translations and no way to tell which
+ * is which, so each one names its author and quotes enough of the original to be
+ * recognised.
  */
 
 /** A finished translation, before it is anything Slack understands. */
@@ -51,7 +58,36 @@ export function escapeMrkdwn(text: string): string {
  * reader is already looking at, and anything that makes it look like a separate
  * announcement makes the channel worse.
  */
-export function renderTranslation(translation: Translation): readonly Block[] {
+export interface Source {
+  /** The Slack id of whoever wrote the original. */
+  readonly authorId: string
+  /** The original message, in the language the reader could not read. */
+  readonly text: string
+}
+
+/**
+ * How much of the original is enough to recognise it.
+ *
+ * A glance, not a second copy of the message. Long enough that two messages in
+ * a row are told apart by their opening words, short enough that the quote never
+ * competes with the translation underneath it.
+ */
+const QUOTE_LIMIT = 80
+
+/**
+ * The original, collapsed to one line and cut to a glance.
+ *
+ * Escaped, which matters more here than anywhere else in this file: the original
+ * is the one string in the product written by somebody else. A mention inside it
+ * would otherwise render as a mention — and the whole point of the quote is that
+ * it is evidence of what was said, not a re-broadcast of it.
+ */
+function quote(text: string): string {
+  const oneLine = escapeMrkdwn(text.replace(/\s+/g, ' ').trim())
+  return oneLine.length <= QUOTE_LIMIT ? oneLine : `${oneLine.slice(0, QUOTE_LIMIT - 1).trimEnd()}…`
+}
+
+export function renderTranslation(translation: Translation, source: Source): readonly Block[] {
   const languages = translation.foundLanguages.map(name)
   const from =
     languages.length === 0
@@ -60,11 +96,23 @@ export function renderTranslation(translation: Translation): readonly Block[] {
         ? `Translated from ${languages[0]}`
         : `Translated from ${languages.slice(0, -1).join(', ')} and ${languages.at(-1)}`
 
+  // An ephemeral does not attach to the message it is about — it appears at the
+  // bottom of the channel like any other message, only nobody else can see it.
+  // With two foreign messages in a row that leaves two translations and no way
+  // to tell which belongs to which, so the translation has to carry its own
+  // anchor: who wrote it, and enough of their words to recognise.
+  //
+  // `<@U…>` is deliberately not escaped. Slack renders it as the person's
+  // current display name, which is why this module needs no directory, no
+  // `users:read` scope and no cache of names that go stale. In an ephemeral it
+  // notifies nobody: the message is never delivered to the person named.
+  const anchor = `> <@${source.authorId}>: ${quote(source.text)}`
+
   return [
-    { type: 'section', text: { type: 'mrkdwn', text: escapeMrkdwn(translation.text) } },
-    // Says who is speaking and that only this reader can see it. Without the
-    // second half, a first-time reader's reasonable assumption is that the whole
-    // channel just watched a bot translate a colleague for them.
+    { type: 'section', text: { type: 'mrkdwn', text: `${anchor}\n${escapeMrkdwn(translation.text)}` } },
+    // Says which language this came from and that only this reader can see it.
+    // Without the second half, a first-time reader's reasonable assumption is
+    // that the whole channel just watched a bot translate a colleague for them.
     { type: 'context', elements: [{ type: 'mrkdwn', text: `${from} · only visible to you` }] },
   ]
 }
