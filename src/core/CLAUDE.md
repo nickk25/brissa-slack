@@ -150,13 +150,22 @@ The port lives here rather than in `src/llm` so the core owns the shape of the
 question. An interface declared in the adapter would let the SDK's vocabulary
 cross back one field at a time.
 
-## Two ports, and why both are declared here
+## Three ports, and why all of them are declared here
 
 `translator.ts` asks for a translation. `directory.ts` asks who reads what in a
-channel. Neither is called by anything in this module, and both belong here
-anyway: the core owns the shape of the question, and an interface declared in the
-module that answers it would let that module's vocabulary — a table name, a row,
-an SDK type — cross back one field at a time.
+channel. `seen.ts` asks whether a delivery has already been handled. None of them
+is called by anything in this module, and all of them belong here anyway: the
+core owns the shape of the question, and an interface declared in the module that
+answers it would let that module's vocabulary — a table name, a row, an SDK type
+— cross back one field at a time.
+
+`seen.ts` is the odd one, and it is worth saying why it is a port at all. What it
+guards is not a product rule: it is the difference between one translation and
+three copies of it, when Slack redelivers an event because the endpoint was slow.
+It is asynchronous for a reason that has not arrived yet — in one process it is a
+set in memory and the `Promise` is free, but the moment there are two processes it
+has to be something both can see, and a signature that changed then would take
+every caller and every test with it.
 
 The rule that keeps this honest is narrow and absolute: **no function in
 `src/core` ever takes a port as a parameter.** `shouldAsk`, `hasNothingToRead`,
