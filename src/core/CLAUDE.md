@@ -167,6 +167,22 @@ set in memory and the `Promise` is free, but the moment there are two processes 
 has to be something both can see, and a signature that changed then would take
 every caller and every test with it.
 
+Two rules of `seen.ts` are stated in the port because its signature cannot carry
+them, and because the first store to get one wrong will be a distributed one, by
+which point no test in this repository would fail.
+
+**Asking and recording are one atomic step.** A store that reads and then writes
+answers "new" twice for two deliveries that arrived together — which is precisely
+the case the port exists for, since Slack's retry can overlap the original.
+
+**Recording happens before the work, not after**, and the cost of that is worth
+naming rather than discovering. The edge answers Slack before attempting the
+translation, so Slack only ever retries when the acknowledgement was late — never
+when the work failed. Suppressing that retry is correct, because the original is
+still in flight. But with a store that survives a crash, a process dying between
+recording and finishing loses the message for good. The fix, when it matters, is
+a lease with an expiry rather than a bare set.
+
 The rule that keeps this honest is narrow and absolute: **no function in
 `src/core` ever takes a port as a parameter.** `shouldAsk`, `hasNothingToRead`,
 `renderTranslation` and `escapeMrkdwn` are synchronous and take data. The first

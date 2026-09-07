@@ -20,7 +20,7 @@ test('INV-store-10 recording is part of asking', async () => {
   assert.equal(await seen.firstTime('Ev3'), true)
 })
 
-test('INV-store-11 it forgets the oldest rather than growing without end', async () => {
+test('INV-store-11 it forgets the oldest, and only the oldest', async () => {
   // The alternative is a process whose memory grows with every message the
   // workspace has ever sent, which is fine right up until it is not.
   const seen = createMemorySeen(3)
@@ -30,10 +30,18 @@ test('INV-store-11 it forgets the oldest rather than growing without end', async
   assert.equal(await seen.firstTime('c'), false)
   assert.equal(await seen.firstTime('a'), false)
 
-  // One more evicts the oldest, and only the oldest.
   assert.equal(await seen.firstTime('d'), true)
-  assert.equal(await seen.firstTime('a'), true)
+
+  // The survivors are checked before the evicted one, and the order is the whole
+  // point: asking about 'a' re-inserts it and evicts 'b' in passing, so a store
+  // that dropped two ids per overflow would be indistinguishable from this one
+  // if 'a' were asked first.
+  assert.equal(await seen.firstTime('b'), false)
   assert.equal(await seen.firstTime('c'), false)
+  assert.equal(await seen.firstTime('d'), false)
+
+  // And only now the one that was actually dropped.
+  assert.equal(await seen.firstTime('a'), true)
 })
 
 test('INV-store-12 asking again does not keep an id alive longer', async () => {

@@ -111,12 +111,10 @@ test('INV-slack-29 a first delivery is retry zero, not an absent one', async () 
 })
 
 test('INV-slack-30 an envelope we cannot use says which part was missing', async () => {
-  // Including the one that matters most: without an id, a retry is
-  // indistinguishable from a new message, and the only safe reading of "we
-  // cannot tell" is to refuse rather than risk a second copy of a translation.
+  // Without an id a retry is indistinguishable from a new message, and the only
+  // safe reading of "we cannot tell" is to refuse rather than risk a second copy
+  // of a translation.
   assert.deepEqual(readEnvelope('not json at all'), { kind: 'unusable', because: 'not-json' })
-  assert.deepEqual(readEnvelope('{"type":"something_else"}'), { kind: 'unusable', because: 'unknown-type' })
-  assert.deepEqual(readEnvelope('{"type":"url_verification"}'), { kind: 'unusable', because: 'unknown-type' })
   assert.deepEqual(readEnvelope('{"type":"event_callback","event":{}}'), {
     kind: 'unusable',
     because: 'no-event-id',
@@ -125,4 +123,27 @@ test('INV-slack-30 an envelope we cannot use says which part was missing', async
     kind: 'unusable',
     because: 'no-event',
   })
+  // A handshake with no challenge in it is a broken handshake, not an unknown
+  // kind of message: there is nothing to answer it with.
+  assert.deepEqual(readEnvelope('{"type":"url_verification"}'), { kind: 'unusable', because: 'no-event' })
+})
+
+test('INV-slack-31 valid JSON that is not an object is refused rather than read', async () => {
+  // `JSON.parse('null')` succeeds and returns null; reading `.type` off it
+  // throws, and a throw escapes the edge as a rejected promise instead of a
+  // response. Same for every other JSON scalar, and for an array.
+  for (const raw of ['null', '5', '"hello"', 'true', '[]']) {
+    assert.deepEqual(readEnvelope(raw), { kind: 'unusable', because: 'not-json' }, raw)
+  }
+})
+
+test('INV-slack-32 something Slack sends that this app does not handle is named, not condemned', async () => {
+  // `app_rate_limited` is legitimate, signed, and not an event callback. Calling
+  // it unusable would make the edge answer with an error, and a run of those is
+  // what makes Slack disable an app's event subscriptions altogether.
+  assert.deepEqual(readEnvelope('{"type":"app_rate_limited"}'), {
+    kind: 'ignored',
+    type: 'app_rate_limited',
+  })
+  assert.deepEqual(readEnvelope('{}'), { kind: 'ignored', type: 'unknown' })
 })

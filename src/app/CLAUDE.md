@@ -155,12 +155,26 @@ It is transport-agnostic on purpose — no `node:http`, no framework, no server.
 request is a body and some headers; an answer is a status and a string. That is
 what makes the entire edge testable without opening a port.
 
-One status code is a decision rather than a convention: an envelope that cannot
-be read is answered **400, not 200**. A 200 tells Slack the delivery was handled,
-and saying that about a request we could not parse would absorb a real problem
-into silence.
+Two status codes are decisions rather than conventions, and they are opposites.
 
-- Slack is answered before the translation is even started. `test: INV-app-24`
+A delivery **missing a piece of itself** is answered **400**. A 200 would tell
+Slack it was handled, and saying that about something we could not parse absorbs
+a real fault into silence.
+
+Something Slack sends that this app simply **does not handle** — `app_rate_limited`
+today, whatever it adds next — is answered **200**. There is nothing to retry,
+and a run of non-2xx responses is what makes Slack disable an app's event
+subscriptions. Answering that one with a 400 would eventually switch Brissa off
+because Slack told us we were going too fast.
+
+`report` is **required**, and was optional for exactly one commit before that
+turned out to contradict a rule stated at the root of this repository: never
+swallow an error. A default no-op discards every `failed` outcome there is, and
+the caller who most needs to be told is the one who never thought about it.
+
+- Slack is answered while the translation is still running — asserted as an
+  order, because a flag that is only ever set later cannot be true at the moment
+  it is checked, whatever the code does. `test: INV-app-24`
 - A request Slack did not sign reaches nothing at all — not the model, not
   anybody's channel. `test: INV-app-25`
 - A request too old to trust is refused, however well signed. `test: INV-app-26`
@@ -178,6 +192,14 @@ into silence.
 - With no clock injected it uses the real one. Every other test here hands the
   edge a fixed `now`, so none of them exercises the branch production runs on.
   `test: INV-app-32`
+- An unsigned request never reaches the record of what was already seen. If
+  deduplication ran before the signature check, anyone who could guess an event
+  id could silence the real delivery of it — no error anywhere, just a
+  translation that never appeared. `test: INV-app-33`
+- A body that is valid JSON and not an object is answered, not thrown.
+  `test: INV-app-34`
+- Something Slack sends that we do not handle is not answered with an error.
+  `test: INV-app-35`
 
 ## Why these tests are different from every other suite here
 
@@ -202,6 +224,11 @@ with no fake standing between them.
 
 ## Still missing
 
-Everything that turns this function into a running program: the HTTP endpoint,
-the Slack signature check, event deduplication, and the config that says who
-reads what. `handleMessage` is complete and nothing calls it yet.
+A process. `handleRequest` and `handleMessage` are complete and **nothing calls
+either of them** — there is no server, no Socket Mode client, and no config
+saying which languages anybody reads.
+
+`manifest.json` currently enables Socket Mode and declares no request URL, so as
+committed Slack will never POST to this edge at all. That is the right default
+for something nobody has deployed, and it does mean the HTTP path is finished
+before it is reachable.
