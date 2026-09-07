@@ -1,0 +1,10 @@
+{
+  "apps": {
+    "T02T1RZVCPP": {
+      "app_id": "A0BV203GSTH",
+      "team_domain": "cloudnonic",
+      "team_id": "T02T1RZVCPP"
+    }
+  },
+  "default": "cloudnonic"
+}

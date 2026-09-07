@@ -61,6 +61,25 @@ that answered it in advance was a contract stating something false.
   bracket in the original must not become markup in the translation.
   `test: INV-core-15`
 - Escaping leaves ordinary text untouched. `test: INV-core-16`
+- The translation says who wrote the original — as a mention, so Slack renders
+  the person's current display name and this module needs no directory, no
+  `users:read` scope and no cache of names that go stale. `test: INV-core-17`
+- Two foreign messages in a row stay told apart. `test: INV-core-18`
+- A long original is a glance rather than a second copy of the message.
+  `test: INV-core-19`
+- The quoted original cannot mention anybody: it arrives as evidence of what was
+  said, never as a re-broadcast — while the author's own mention, which this
+  module builds, stays live. `test: INV-core-20`
+- A multi-line original is quoted as one line. Slack's `>` quotes to the end of
+  the line, so a newline inside would put the rest of the original outside the
+  quote bar, where it reads as the translation. `test: INV-core-21`
+- The quote is cut at a fixed length, and a message exactly that long is not cut.
+  Two off-by-ones live there and neither is visible in a screenshot: whether the
+  boundary is inside or outside, and whether the ellipsis replaces a character or
+  is added to them. `test: INV-core-22`
+- A translation whose source language is unknown still says it was translated;
+  otherwise the context line reads "Translated from " and trails off, which looks
+  like the bug it is not. `test: INV-core-23`
 
 ## Why rendering is here and not in the adapter
 
@@ -77,6 +96,44 @@ The context line says two things and both are load-bearing: which language the
 message came from, and that nobody else can see this. Without the second, a
 first-time reader's reasonable assumption is that the whole channel just watched
 a bot translate a colleague for them.
+
+## The anchor, and why it had to be added rather than removed
+
+Everything else in this file is subtraction: no header, no divider, no button.
+The anchor is the one element that had to go in.
+
+**An ephemeral does not attach to the message it translates.** It lands at the
+bottom of the channel like any other message, only nobody else can see it. One
+message alone, that is fine. Two foreign messages in a row produce two
+translations sitting together with nothing saying which belongs to which, and
+the reader is back to doing the work this product exists to remove.
+
+So each translation carries who wrote the original and enough of their words to
+recognise:
+
+```
+> @Jens: Passt bei mir auch, ich melde mich…
+A mí también me viene bien, te escribo mañana.
+Translated from German · only visible to you
+```
+
+Three things about that line are decisions rather than formatting:
+
+The author is a `<@U…>` **mention**, not a name. Slack renders it as the
+person's current display name, which is why Brissa asks for no `users:read`
+scope, keeps no directory, and can never show a name that went stale. A
+permission not requested is a permission that cannot leak.
+
+The quote is **escaped and the mention is not**. The original is the one string
+in this product written by somebody else, and a mention inside it must arrive as
+evidence of what was said rather than as a re-broadcast of it.
+
+The quote is **cut to a glance**, and collapsed to one line. It is there to be
+recognised, not read: repeating the whole message above its own translation
+doubles the height of something that appeared unprompted in somebody else's
+channel. One line also matters mechanically — Slack's `>` quotes to the end of
+the line, and a newline would drop the rest of the original outside the quote
+bar where it reads as the translation.
 
 ## Three outcomes, not two
 

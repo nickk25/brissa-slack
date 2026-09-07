@@ -75,7 +75,8 @@ absence to be read later as a bug.
 ## Invariants
 
 - One message reaches every reader who needed it and nobody else, with the blocks
-  `renderTranslation` produced. `test: INV-app-01`
+  `renderTranslation` produced — including the anchor, which needs the author and
+  the original text this module is already holding. `test: INV-app-01`
 - Readers who read the same languages cost one model call, not one each.
   `test: INV-app-02`
 - The same languages in a different order are a different translation, because
