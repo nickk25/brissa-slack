@@ -130,6 +130,55 @@ absence to be read later as a bug.
   loser of that collision would be sent a translation into a language they never
   declared — silently, and only for them. `test: INV-app-23`
 
+## The edge
+
+`http.ts` is the public surface: one HTTP request in, one answer out, and the
+real work happening after the answer has already gone. Three things have to be
+true before anything downstream runs, and each is here because it cannot be
+anywhere else.
+
+**Answer first, work after.** Slack expects a response within about three seconds
+and redelivers the event if it does not get one. A model call with retries can
+take longer than that on its own, so waiting for the translation before answering
+would guarantee a duplicate exactly when everything is already slow. The response
+is decided before `handleMessage` is awaited, and the work comes back as `done`
+for the caller to keep alive.
+
+**Prove it came from Slack.** This is the only place `verifySignature` is called,
+and nothing reaches `handleMessage` that has not been through it.
+
+**Recognise a redelivery.** `handleMessage` deliberately does not and cannot: the
+retry count and event id live in the envelope, which `receive` never sees. This
+is the only layer holding both.
+
+It is transport-agnostic on purpose — no `node:http`, no framework, no server. A
+request is a body and some headers; an answer is a status and a string. That is
+what makes the entire edge testable without opening a port.
+
+One status code is a decision rather than a convention: an envelope that cannot
+be read is answered **400, not 200**. A 200 tells Slack the delivery was handled,
+and saying that about a request we could not parse would absorb a real problem
+into silence.
+
+- Slack is answered before the translation is even started. `test: INV-app-24`
+- A request Slack did not sign reaches nothing at all — not the model, not
+  anybody's channel. `test: INV-app-25`
+- A request too old to trust is refused, however well signed. `test: INV-app-26`
+- The setup handshake is answered with the challenge and nothing else; failing it
+  means the app can never be installed. `test: INV-app-27`
+- An envelope we cannot use is not answered with success. `test: INV-app-28`
+- A redelivery does the work once and is still answered with success — a retry is
+  not an error, and reporting one would only produce another retry.
+  `test: INV-app-29`
+- What happened is reported once the work is done, not when it was answered.
+  `test: INV-app-30`
+- A reporter that throws does not take the process down after the fact. `done`
+  resolves long after the request that produced it was answered, so an unhandled
+  rejection there would surface with nothing to attach it to. `test: INV-app-31`
+- With no clock injected it uses the real one. Every other test here hands the
+  edge a fixed `now`, so none of them exercises the branch production runs on.
+  `test: INV-app-32`
+
 ## Why these tests are different from every other suite here
 
 They are the only ones that can fail because two modules disagree. A per-module

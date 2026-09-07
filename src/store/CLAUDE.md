@@ -66,6 +66,36 @@ membership call — **not** a Slack import added here.
 - The same question asked twice gets the same answer: no hidden state and no
   cache that can go stale between two reads about one message. `test: INV-store-08`
 
+## Deliveries already handled
+
+`seen.ts` answers `src/core/seen.ts`, and what it guards is not a product rule:
+it is the difference between one translation and three copies of it.
+
+Slack redelivers an event whenever the endpoint does not answer quickly enough or
+answers with anything but a 2xx — which is exactly when something is already
+going wrong. `chat.postEphemeral` has no idea it has posted before, so a bad
+minute would otherwise become every reader receiving the same translation
+repeatedly.
+
+It is bounded, because the alternative is a process whose memory grows with every
+message the workspace has ever sent. Insertion order is the eviction order, and
+that is not an LRU pretending to be one: an id offered twice is a **duplicate**,
+not a use, so nothing here is ever touched a second time in a way that should
+keep it alive longer.
+
+The one way it can be wrong is capacity: an id evicted while its retry is still
+coming would look new. That is a sizing question rather than a correctness one —
+the bound has to outlast Slack's retry window, and ten thousand ids is minutes of
+traffic for any workspace this will see before there is a shared store.
+
+- A delivery is new exactly once. `test: INV-store-09`
+- Recording is part of asking. A check the caller has to follow with a separate
+  record says yes twice whenever anyone forgets, and the place it would be
+  forgotten is the error path — which is exactly where retries come from.
+  `test: INV-store-10`
+- It forgets the oldest rather than growing without end. `test: INV-store-11`
+- Asking again does not keep an id alive longer. `test: INV-store-12`
+
 ## Still missing
 
 Enrolment. Nothing writes to this module — the port is read-only on purpose, and
