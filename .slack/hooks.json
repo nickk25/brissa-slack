@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "get-manifest": "node .slack/get-manifest.mjs"
+  },
+  "config": {
+    "watch": { "filter-regex": "^manifest\\.json$", "paths": ["."] }
+  }
+}

@@ -12,3 +12,9 @@ docs/state.html
 .env
 .env.*
 !.env.example
+
+# Slack CLI machine state: which app id is installed where, and its caches.
+# Nothing in the repository reads it, and re-linking on another machine is one
+# command. The manifest — the part that is a decision — is committed.
+.slack/apps*.json
+.slack/cache/

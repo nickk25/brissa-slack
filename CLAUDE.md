@@ -59,6 +59,7 @@ Two decisions everything else follows from:
 | `src/store/` | Who reads what, and what Brissa may do in a channel. No database yet. |
 | `src/app/` | Wiring. The only module allowed to import all the others. |
 | `fixtures/corpus/` | Real messages and the decision each should produce. Protected. |
+| `manifest.json` | The Slack app: its scopes, its events, its name. |
 | `coupling.yaml` | This repository's rules. Also the schema reference. |
 | `tools/agentic/` | The gate, contracts, invariants and state machinery. Protected. |
 
