@@ -164,4 +164,12 @@ first saved. Failing that handshake means the app can never be installed at all.
   indistinguishable from a new message, and the only safe reading of "we cannot
   tell" is to refuse rather than risk a second copy of a translation.
   `test: INV-slack-30`
+- Valid JSON that is not an object is refused rather than read. `JSON.parse`
+  succeeds on `null` and on every scalar, and reading a field off one throws —
+  which at the edge escapes as a rejected promise instead of a response.
+  `test: INV-slack-31`
+- Something Slack sends that this app does not handle is **named, not condemned**.
+  `app_rate_limited` is legitimate and signed; calling it unusable would make the
+  edge answer with an error, and a run of those is what makes Slack disable an
+  app's event subscriptions altogether. `test: INV-slack-32`
 

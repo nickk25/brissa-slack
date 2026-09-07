@@ -16,6 +16,24 @@
  * both of them can see, and a signature that had to change then would take every
  * caller and every test with it.
  */
+/**
+ * Two things every implementation has to keep, and neither is visible in the
+ * signature. They are written here because the first store to get one wrong will
+ * be a distributed one, and no test in this repository would fail.
+ *
+ * **Atomic.** Asking and recording are one step. A store that reads, then
+ * writes, answers `true` twice for two deliveries that arrived together — which
+ * is exactly the case this exists for, since Slack's retry can overlap the
+ * original.
+ *
+ * **Recorded before the work, not after.** That is deliberate and it has a cost
+ * worth naming: the edge answers Slack before the translation is attempted, so
+ * Slack only ever retries when the acknowledgement itself was late — never when
+ * the work failed. Suppressing that retry is right, because the original is
+ * still in flight. But with a store that survives a crash, a process that dies
+ * between recording and finishing loses the message for good. The fix, when it
+ * matters, is a lease with an expiry rather than a bare set.
+ */
 export interface Seen {
   /**
    * True the first time an id is offered, false every time after.

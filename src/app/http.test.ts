@@ -60,37 +60,36 @@ const edge = (f: ReturnType<typeof fakes>, over: Partial<Edge> = {}): Edge => ({
   signingSecret: SECRET,
   seen: createMemorySeen(),
   now: () => NOW,
+  report: () => {},
   ...over,
 })
 
-test('INV-app-24 Slack is answered before the translation is even started', async () => {
+test('INV-app-24 Slack is answered while the translation is still running', async () => {
   // The reason this file exists. Slack redelivers if it does not hear back in
   // about three seconds, and a model call with retries can take longer than that
   // on its own — so waiting for the translation before answering would
   // guarantee a duplicate exactly when everything is already slow.
-  let release = () => {}
-  const held = new Promise<void>((r) => {
-    release = r
-  })
-  let finished = false
-
+  //
+  // Asserted as an order rather than as a flag. A flag that is only ever set
+  // later cannot be true at the moment it is checked, whatever the code does; a
+  // recorded sequence fails loudly, and without hanging, if the answer moves.
+  const order: string[] = []
   const f = fakes(async () => {
-    await held
-    finished = true
+    order.push('translating')
+    await new Promise((r) => setTimeout(r, 20))
+    order.push('translated')
     return { kind: 'silent' }
   })
 
   const response = await handleRequest(edge(f), signed(envelope()))
+  order.push('answered')
 
-  // Answered, while the translator is still sitting inside the call.
   assert.equal(response.status, 200)
   assert.equal(response.body, 'ok')
-  assert.deepEqual(f.calls, ['Passt bei mir auch!'])
-  assert.equal(finished, false)
+  assert.deepEqual(order, ['translating', 'answered'])
 
-  release()
   await response.done
-  assert.equal(finished, true)
+  assert.deepEqual(order, ['translating', 'answered', 'translated'])
 })
 
 test('INV-app-25 a request Slack did not sign reaches nothing at all', async () => {
@@ -221,6 +220,7 @@ test('INV-app-32 with no clock injected it uses the real one', async () => {
       },
       signingSecret: SECRET,
       seen: createMemorySeen(),
+      report: () => {},
     },
     signed(envelope(), at),
   )
@@ -228,4 +228,49 @@ test('INV-app-32 with no clock injected it uses the real one', async () => {
   assert.equal(response.status, 200)
   await response.done
   assert.deepEqual(f.calls, ['Passt bei mir auch!'])
+})
+
+test('INV-app-33 an unsigned request never reaches the record of what was already seen', async () => {
+  // The poisoning case. If the deduplication ran before the signature check, an
+  // attacker who could guess an event id would silence the real delivery of it —
+  // no error anywhere, just a translation that never appeared.
+  const f = fakes()
+  const e = edge(f, { seen: createMemorySeen() })
+
+  const forged = await handleRequest(e, { body: envelope('Ev1'), headers: {} })
+  assert.equal(forged.status, 401)
+
+  // Slack's own delivery of that very event is still new.
+  const real = await handleRequest(e, signed(envelope('Ev1')))
+  assert.equal(real.body, 'ok')
+  await real.done
+  assert.deepEqual(f.calls, ['Passt bei mir auch!'])
+})
+
+test('INV-app-34 a body that is valid JSON and not an object is answered, not thrown', async () => {
+  // `JSON.parse('null')` succeeds. Reading a field off the result throws, and a
+  // throw here escapes as a rejected promise rather than as a response — from
+  // the one function that promises never to do that.
+  const f = fakes()
+  for (const body of ['null', '5', '"hello"', '[]']) {
+    const response = await handleRequest(edge(f), signed(body))
+    assert.equal(response.status, 400, body)
+    assert.equal(response.body, 'not-json', body)
+    await response.done
+  }
+  assert.deepEqual(f.calls, [])
+})
+
+test('INV-app-35 something Slack sends that we do not handle is not answered with an error', async () => {
+  // `app_rate_limited` is signed, legitimate, and not an event callback. A run
+  // of non-2xx responses is what makes Slack disable an app's event
+  // subscriptions, so answering this with a 400 would eventually switch Brissa
+  // off — because Slack told us we were going too fast.
+  const f = fakes()
+  const response = await handleRequest(edge(f), signed('{"type":"app_rate_limited"}'))
+
+  assert.equal(response.status, 200)
+  assert.equal(response.body, 'ignored:app_rate_limited')
+  await response.done
+  assert.deepEqual(f.calls, [])
 })

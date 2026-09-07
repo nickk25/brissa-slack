@@ -101,7 +101,18 @@ export type Envelope =
       /** 0 on a first delivery, 1 and up on Slack's own retries. */
       readonly retryNum: number
     }
-  | { readonly kind: 'unusable'; readonly because: 'not-json' | 'unknown-type' | 'no-event-id' | 'no-event' }
+  /**
+   * Slack sent something this app does not handle — `app_rate_limited`, or
+   * whatever it adds next. Not a fault, and specifically not something to
+   * answer with an error: a run of non-2xx responses is what makes Slack
+   * disable an app's event subscriptions.
+   */
+  | { readonly kind: 'ignored'; readonly type: string }
+  /**
+   * Something claiming to be a delivery and missing a piece of one. A real
+   * fault, and it stays visible as one.
+   */
+  | { readonly kind: 'unusable'; readonly because: 'not-json' | 'no-event-id' | 'no-event' }
 
 interface RawEnvelope {
   readonly type?: string
@@ -111,22 +122,30 @@ interface RawEnvelope {
 }
 
 export function readEnvelope(raw: string, headers: Headers = {}): Envelope {
-  let body: RawEnvelope
+  let parsed: unknown
   try {
-    body = JSON.parse(raw) as RawEnvelope
+    parsed = JSON.parse(raw)
   } catch {
     return { kind: 'unusable', because: 'not-json' }
   }
+
+  // `JSON.parse('null')` succeeds and returns null, and every valid JSON scalar
+  // does something similar. Reading `.type` off one of those throws, and a throw
+  // here would escape the edge as a rejected promise rather than a response.
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { kind: 'unusable', because: 'not-json' }
+  }
+  const body = parsed as RawEnvelope
 
   // Sent once, when the endpoint URL is first saved in app settings. Answering
   // it is the whole handshake; failing to means the app can never be installed.
   if (body.type === 'url_verification') {
     return typeof body.challenge === 'string'
       ? { kind: 'challenge', challenge: body.challenge }
-      : { kind: 'unusable', because: 'unknown-type' }
+      : { kind: 'unusable', because: 'no-event' }
   }
 
-  if (body.type !== 'event_callback') return { kind: 'unusable', because: 'unknown-type' }
+  if (body.type !== 'event_callback') return { kind: 'ignored', type: body.type ?? 'unknown' }
 
   // Without an id a retry is indistinguishable from a new message, and the only
   // safe reading of "we cannot tell" is to refuse rather than to risk a second

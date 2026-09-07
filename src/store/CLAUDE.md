@@ -93,7 +93,10 @@ traffic for any workspace this will see before there is a shared store.
   record says yes twice whenever anyone forgets, and the place it would be
   forgotten is the error path — which is exactly where retries come from.
   `test: INV-store-10`
-- It forgets the oldest rather than growing without end. `test: INV-store-11`
+- It forgets the oldest, and only the oldest. The survivors are checked before
+  the evicted one, and that order is the whole assertion: asking about an evicted
+  id re-inserts it and evicts the next in passing, so a store dropping two per
+  overflow would otherwise be indistinguishable. `test: INV-store-11`
 - Asking again does not keep an id alive longer. `test: INV-store-12`
 
 ## Still missing
