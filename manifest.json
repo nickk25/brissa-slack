@@ -17,6 +17,12 @@
         "callback_id": "translate_message",
         "description": "Read this message in your own language. Only you see it."
       }
+    ],
+    "slash_commands": [
+      {
+        "command": "/translate",
+        "description": "Translate recent messages here. Only you see the answer."
+      }
     ]
   },
   "oauth_config": {
@@ -25,6 +31,12 @@
         "channels:history",
         "chat:write",
         "commands",
+        "groups:history",
+        "im:history",
+        "mpim:history"
+      ],
+      "user": [
+        "channels:history",
         "groups:history",
         "im:history",
         "mpim:history"

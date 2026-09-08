@@ -37,6 +37,8 @@ export type Frame =
    * the two would put the shape of a shortcut in the file that reads sockets.
    */
   | { readonly kind: 'interactive'; readonly envelopeId: string; readonly payload: unknown }
+  /** Somebody typed a slash command. Payload left unparsed, same as above. */
+  | { readonly kind: 'command'; readonly envelopeId: string; readonly payload: unknown }
   /** Slack asking for the connection to be re-established. Routine, not an error. */
   | { readonly kind: 'disconnect'; readonly reason: string }
   | { readonly kind: 'other'; readonly type: string }
@@ -72,6 +74,10 @@ export function readFrame(raw: string): Frame {
   if (frame.type === 'hello') return { kind: 'hello' }
   if (frame.type === 'disconnect') return { kind: 'disconnect', reason: frame.reason ?? 'unknown' }
 
+  if (frame.type === 'slash_commands' && typeof frame.envelope_id === 'string') {
+    return { kind: 'command', envelopeId: frame.envelope_id, payload: frame.payload ?? null }
+  }
+
   if (frame.type === 'interactive' && typeof frame.envelope_id === 'string') {
     return { kind: 'interactive', envelopeId: frame.envelope_id, payload: frame.payload ?? null }
   }
@@ -106,6 +112,8 @@ export interface SocketModeOptions {
   readonly onEnvelope: (envelope: Envelope) => void
   /** Called once per interaction, also after the acknowledgement. */
   readonly onInteractive?: (payload: unknown) => void
+  /** Called once per slash command, also after the acknowledgement. */
+  readonly onCommand?: (payload: unknown) => void
   /** Connection lifecycle, for whoever wants to say something about it. */
   readonly onStatus?: (status: string) => void
   /** Injected so a test can open a fake socket and drive it by hand. */
@@ -181,7 +189,7 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
         ws.close()
         return
       }
-      if (frame.kind !== 'event' && frame.kind !== 'interactive') return
+      if (frame.kind !== 'event' && frame.kind !== 'interactive' && frame.kind !== 'command') return
 
       // Acknowledged first, always. Slack redelivers anything it has not heard
       // back about within three seconds, and the work below can take longer than
@@ -189,7 +197,8 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
       ws.send(JSON.stringify({ envelope_id: frame.envelopeId }))
 
       if (frame.kind === 'event') options.onEnvelope(frame.envelope)
-      else options.onInteractive?.(frame.payload)
+      else if (frame.kind === 'interactive') options.onInteractive?.(frame.payload)
+      else options.onCommand?.(frame.payload)
     })
 
     ws.addEventListener('close', () => {

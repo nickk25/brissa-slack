@@ -16,6 +16,16 @@ import type { ChannelPolicy, Reader } from '../core/ports.ts'
 export interface Config {
   readonly botToken: string
   readonly appToken: string
+  /**
+   * Reads channel history **as the person who asked**, and only then.
+   *
+   * Optional, and its absence is a working state rather than a fault: without it
+   * `/translate` cannot read a channel and says so, while the message-menu
+   * shortcut carries its own text and keeps working. Requiring it would make
+   * everyone grant a broad read permission to use a feature that never needed
+   * one.
+   */
+  readonly userToken: string | undefined
   readonly model: string
   readonly readers: readonly Reader[]
   readonly channels: readonly ChannelPolicy[]
@@ -91,6 +101,7 @@ export function readConfig(env: Record<string, string | undefined>): Configured 
     config: {
       botToken,
       appToken,
+      userToken: env.SLACK_USER_TOKEN?.trim() || undefined,
       model: env.BRISSA_MODEL?.trim() || 'claude-sonnet-5',
       readers,
       channels,
