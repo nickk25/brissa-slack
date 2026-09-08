@@ -47,6 +47,7 @@ function wire(options: {
         return { ok: true, messages: options.history ?? [] }
       },
     },
+    historyOwner: 'U-nick',
     send: async (_url, r) => {
       sent.push({ blocks: r.blocks, text: r.text })
       return { ok: true }
@@ -154,13 +155,18 @@ test('INV-app-59 a directory failure is reported rather than answered', async ()
   })
 })
 
-test('INV-app-60 a history failure is reported rather than answered', async () => {
+test('INV-app-60 a history failure is told to the caller and kept in the outcome', async () => {
+  // Two audiences, two levels of detail. The caller waiting on a command gets a
+  // sentence they can act on; the process keeps the Slack error, because
+  // "transport: ECONNRESET" and "invalid_auth" are somebody's job and a
+  // one-word kind would swallow them.
   const w = wire({ historyResult: { ok: false, detail: 'transport: ECONNRESET' } })
   assert.deepEqual(await handleCommand(w.ports, command({ kind: 'latest' })), {
     kind: 'history-failed',
     detail: 'transport: ECONNRESET',
   })
-  assert.equal(w.sent.length, 0)
+  assert.equal(w.sent.length, 1)
+  assert.ok(w.sent[0]?.text.includes('Could not read this channel'))
 })
 
 test('INV-app-61 somebody Brissa has never heard of is told so, not ignored', async () => {
@@ -235,4 +241,41 @@ test('INV-app-66 a message somebody else wrote still carries who wrote it', asyn
 
   const blocks = JSON.stringify(w.sent[0]?.blocks ?? [])
   assert.ok(blocks.includes('<@U-jens>'))
+})
+
+test('INV-app-68 nobody translates a channel with somebody else’s account', async () => {
+  // Brissa holds one credential. Reading with it on behalf of a second person
+  // would put their command under the owner's identity in Slack's access log,
+  // and the owner's channel memberships would decide what the caller can see.
+  // Refused by name rather than done quietly.
+  // Ana is a known reader with her own languages — the refusal is about whose
+  // account does the reading, not about whether Brissa knows her.
+  const ana: Reader = { userId: 'U-ana', reads: ['de'] }
+  const w = wire({ readers: [nick, ana], history: [{ authorId: 'U-jens', text: GERMAN }] })
+  const outcome = await handleCommand(w.ports, command({ kind: 'latest' }, { invokedBy: 'U-ana' }))
+
+  assert.deepEqual(outcome, { kind: 'noticed', notice: 'not-your-account' })
+  assert.equal(w.historyCalls(), 0)
+  assert.ok(w.sent[0]?.text.includes('not yours'))
+})
+
+test('INV-app-69 an unverified account is refused too', async () => {
+  // A credential whose owner nobody checked is one nobody can be told about, so
+  // "we did not look" and "it is not yours" get the same answer.
+  const w = wire({ history: [{ authorId: 'U-jens', text: GERMAN }] })
+  const outcome = await handleCommand({ ...w.ports, historyOwner: undefined }, command({ kind: 'latest' }))
+
+  assert.deepEqual(outcome, { kind: 'noticed', notice: 'not-your-account' })
+  assert.equal(w.historyCalls(), 0)
+})
+
+test('INV-app-70 text you hand over needs no account at all', async () => {
+  // The refusals above guard a channel read. Refusing to translate words
+  // somebody just typed would be refusing for no reason.
+  const w = wire({})
+  const outcome = await handleCommand(
+    { ...w.ports, history: undefined, historyOwner: undefined },
+    command({ kind: 'literal', text: 'Guten Morgen zusammen' }),
+  )
+  assert.deepEqual(outcome, { kind: 'translated', count: 1 })
 })

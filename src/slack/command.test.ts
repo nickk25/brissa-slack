@@ -11,6 +11,19 @@ const payload = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
+/**
+ * A refusal, and whether the caller can be told about it.
+ *
+ * `answerable` is the half worth asserting: Slack acknowledged the command
+ * before any of this ran, so a refusal with nowhere to answer is a command that
+ * silently did nothing.
+ */
+const assertRefused = (read: ReturnType<typeof readCommand>, because: string, answerable: boolean) => {
+  assert.equal(read.ok, false)
+  assert.ok(!read.ok && read.because === because, `${because}: got ${JSON.stringify(read)}`)
+  assert.equal(!read.ok && read.responseUrl !== undefined, answerable, because)
+}
+
 test('INV-slack-62 a slash command payload becomes the fields the app needs, defaulting to the latest message', async () => {
   const read = readCommand(payload())
   assert.ok(read.ok)
@@ -41,18 +54,22 @@ test('INV-slack-64 anything else is literal text, verbatim', async () => {
 })
 
 test('INV-slack-65 a count of zero, or larger than the stated maximum, is refused by name', async () => {
-  assert.deepEqual(readCommand(payload({ text: '0' })), { ok: false, because: 'count-zero' })
-  assert.deepEqual(readCommand(payload({ text: String(MAX_COUNT + 1) })), { ok: false, because: 'count-too-large' })
+  // Refused, and answerable: Slack acknowledged the command before any of this
+  // ran, so a refusal the caller cannot hear is a command that did nothing.
+  assertRefused(readCommand(payload({ text: '0' })), 'count-zero', true)
+  assertRefused(readCommand(payload({ text: String(MAX_COUNT + 1) })), 'count-too-large', true)
 })
 
 test('INV-slack-66 a malformed payload, or one with nowhere to answer, is refused by name', async () => {
-  for (const [input, because] of [
-    ['a string', 'not-a-command'],
-    [null, 'not-a-command'],
-    [payload({ response_url: undefined }), 'no-response-url'],
-    [payload({ channel_id: undefined }), 'no-channel'],
-    [payload({ user_id: undefined }), 'no-user'],
+  // The third column is whether the caller can be told. Only the first three
+  // are unanswerable, and only because the payload gave nowhere to answer.
+  for (const [input, because, answerable] of [
+    ['a string', 'not-a-command', false],
+    [null, 'not-a-command', false],
+    [payload({ response_url: undefined }), 'no-response-url', false],
+    [payload({ channel_id: undefined }), 'no-channel', true],
+    [payload({ user_id: undefined }), 'no-user', true],
   ] as const) {
-    assert.deepEqual(readCommand(input), { ok: false, because }, String(because))
+    assertRefused(readCommand(input), because, answerable)
   }
 })

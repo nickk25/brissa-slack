@@ -61,6 +61,12 @@ interface RawCommand {
 export type CommandRead =
   | { readonly ok: true; readonly command: SlashCommand }
   | {
+      /**
+       * Where to answer, when the payload said. A refusal the caller never hears
+       * is the same as no answer at all, and Slack has already acknowledged the
+       * command by the time this is read.
+       */
+      readonly responseUrl?: string
       readonly ok: false
       readonly because:
         | 'not-a-command'
@@ -110,11 +116,19 @@ export function readCommand(payload: unknown): CommandRead {
   // entire interaction — the same reasoning `readShortcut` states for the
   // same field.
   if (!raw.response_url) return { ok: false, because: 'no-response-url' }
-  if (!raw.channel_id) return { ok: false, because: 'no-channel' }
-  if (!raw.user_id) return { ok: false, because: 'no-user' }
+  const responseUrl = raw.response_url
+
+  // Every refusal from here on carries somewhere to answer. Slack acknowledged
+  // this command before any of it ran, so a refusal the caller cannot hear is
+  // indistinguishable from a command that did nothing.
+  if (!raw.channel_id) return { ok: false, because: 'no-channel', responseUrl }
+  if (!raw.user_id) return { ok: false, because: 'no-user', responseUrl }
 
   const argument = parseArgument(raw.text ?? '')
-  if (!argument.ok) return argument
+  // Carried down from the argument parser, which never saw the payload: a
+  // refusal the caller cannot hear is the same as no answer at all, and Slack
+  // acknowledged this command before any of it ran.
+  if (!argument.ok) return { ...argument, responseUrl }
 
   return {
     ok: true,

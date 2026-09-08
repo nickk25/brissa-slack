@@ -358,8 +358,17 @@ to the constant in `command.ts` itself.
   `test: INV-slack-64`
 - A count of zero, or larger than the stated maximum, is refused by name.
   `test: INV-slack-65`
-- A malformed payload, or one with nowhere to answer, is refused by name.
+- A malformed payload, or one with nowhere to answer, is refused by name — and
+  every refusal that *has* somewhere to answer carries it, because Slack
+  acknowledges a command before any of this runs and a refusal the caller cannot
+  hear is a command that silently did nothing.
   `test: INV-slack-66`
 - A slash command is acknowledged and handed on unparsed, same discipline as an
   interaction. `test: INV-slack-67`
+- Whose account a token belongs to is asked, not assumed. A credential nobody
+  checked the owner of is one nobody can be told about, so an unanswerable check
+  comes back undefined rather than as an optimistic guess. `test: INV-slack-68`
+- A count means messages a person wrote, not entries Slack returned. Slack's own
+  `limit` counts raw entries and joins and topic changes are filtered out after,
+  so asking for exactly five would quietly translate two. `test: INV-slack-69`
 

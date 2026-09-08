@@ -44,9 +44,42 @@ const LATEST_WINDOW = 10
 export interface CommandPorts {
   readonly directory: Directory
   readonly translator: Translator
-  readonly history: History
+  /**
+   * Absent is a working state: without an account to read with, this command
+   * says so and the message-menu shortcut carries on unaffected.
+   */
+  readonly history?: History | undefined
+  /**
+   * Whose account `history` reads with.
+   *
+   * Reading a channel needs somebody's credential, and Brissa holds exactly one.
+   * Anyone else's `/translate` would therefore read as that person — their
+   * identity in Slack's access log, their channel memberships deciding what is
+   * visible. That is not something to do quietly, so it is refused by name.
+   *
+   * Undefined means unverified, and unverified is refused too: a credential
+   * whose owner nobody checked is one nobody can be told about.
+   */
+  readonly historyOwner?: string | undefined
   /** Injected so a test needs no network; the real one is `replyPrivately`. */
   readonly send?: typeof replyPrivately
+}
+
+/**
+ * Tell somebody their command was refused before it ever became a command.
+ *
+ * `readCommand` rejects a payload for reasons the caller can do something about
+ * — a count of zero, a count past the maximum — and Slack acknowledged the
+ * command before any of that ran. Without this, those refusals reach a terminal
+ * the caller cannot see and the command appears to have done nothing.
+ */
+export async function refuseCommand(
+  responseUrl: string,
+  because: string,
+  send: typeof replyPrivately = replyPrivately,
+): Promise<void> {
+  const text = `That command could not be read: ${because}. Try \`/translate\`, \`/translate 5\`, or \`/translate\` followed by the text itself.`
+  await send(responseUrl, { blocks: renderNotice('translation-failed'), text })
 }
 
 export type CommandOutcome =
@@ -70,7 +103,7 @@ const detail = (err: unknown): string => String((err as Error)?.message ?? err)
  * honest to point.
  */
 async function gatherSources(
-  history: History,
+  history: History | undefined,
   command: SlashCommand,
 ): Promise<
   | {
@@ -92,6 +125,11 @@ async function gatherSources(
   if (argument.kind === 'literal') {
     return { ok: true, sources: [{ authorId: command.invokedBy, text: argument.text }], anchored: false }
   }
+
+  // Unreachable: `handleCommand` refuses before it gets here when there is no
+  // account to read with. Stated rather than asserted, because a thrown error
+  // in a path the caller is waiting on would be silence with extra steps.
+  if (history === undefined) return { ok: false, detail: 'no account to read with' }
 
   const limit = argument.kind === 'count' ? argument.count : LATEST_WINDOW
   const read = await history.read(command.channelId, limit)
@@ -139,16 +177,35 @@ export async function handleCommand(ports: CommandPorts, command: SlashCommand):
     return { kind: 'lookup-failed', detail: detail(err) }
   }
 
-  const gathered = await gatherSources(ports.history, command)
-  if (!gathered.ok) return { kind: 'history-failed', detail: gathered.detail }
+  // Text typed into the command needs no account and no channel read, so the
+  // checks below are skipped for it deliberately: refusing to translate words
+  // somebody just handed over would be refusing for no reason.
+  const needsHistory = command.argument.kind !== 'literal'
 
-  // Nothing to point at: an empty channel, or a caller who has only ever
-  // talked to themselves. Still answered — a command that finds nothing is
-  // not silence, it is a broken button. `already-readable` is the closest
-  // existing notice and not a precise one: its wording says the message was
-  // readable, when really there was no message at all. Reused anyway rather
-  // than invented, because a new wording is a change to `renderNotice` and
-  // this module does not own `src/core/render.ts`.
+  if (needsHistory) {
+    // Reading a channel spends somebody's credential. Brissa holds one, so for
+    // anybody else this command would read as that person — their identity in
+    // Slack's log, their memberships deciding what is visible. Refused out
+    // loud rather than done quietly.
+    if (ports.history === undefined || ports.historyOwner === undefined) {
+      return await notice('not-your-account')
+    }
+    if (ports.historyOwner !== command.invokedBy) return await notice('not-your-account')
+  }
+
+  const gathered = await gatherSources(ports.history, command)
+  if (!gathered.ok) {
+    // Slack refused the read — a rate limit, an expired credential, a channel
+    // that account is not in. The caller is told, because from where they sit
+    // an unexplained silence is indistinguishable from a broken command. The
+    // detail stays in the outcome for whoever is watching the process.
+    await notice('cannot-read-here')
+    return { kind: 'history-failed', detail: gathered.detail }
+  }
+
+  // Nothing to point at: an empty channel, or a caller who has only ever talked
+  // to themselves. Still answered — a command that finds nothing is not silence,
+  // it is a broken button.
   if (gathered.sources.length === 0) return await notice('nothing-to-translate')
 
   const results = await Promise.all(

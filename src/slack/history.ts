@@ -9,8 +9,15 @@
  * channel shared with a client is not a channel Brissa can afford to visibly
  * join.
  *
- * So this reads with a USER token instead. Brissa reads as the person who
- * typed `/translate`, in channels they already belong to, and joins nothing.
+ * So this reads with a USER token instead, and joins nothing.
+ *
+ * **Whose token it is matters, and there is exactly one.** This adapter reads as
+ * whoever authorised that credential — not as whoever typed the command. Letting
+ * a second person's `/translate` read through it would put their request under
+ * the owner's identity in Slack's access log, and the owner's memberships would
+ * decide what the caller gets to see. `src/app/command.ts` refuses that by name
+ * rather than doing it quietly, which is the only reason this adapter can stay
+ * this simple.
  * Two things follow from that, and both are structural rather than a rule
  * this file has to remember to keep:
  *
@@ -26,6 +33,15 @@
 import type { History, HistoryRead, RecentMessage } from '../core/history.ts'
 
 const ENDPOINT = 'https://slack.com/api/conversations.history'
+
+/**
+ * The most raw entries this will pull for one command.
+ *
+ * A ceiling on the surplus above, so a large `limit` cannot turn into a request
+ * for Slack's entire page size. Slack's own maximum is 1000; this is far below
+ * it because nobody reads twenty messages of translation, let alone a hundred.
+ */
+const MAX_FETCH = 60
 
 /** The parts of one raw history entry this adapter reads. */
 interface RawHistoryMessage {
@@ -75,7 +91,15 @@ export function createSlackHistory(userToken: string, fetchImpl: typeof fetch = 
   return {
     async read(channelId: string, limit: number): Promise<HistoryRead> {
       try {
-        const query = new URLSearchParams({ channel: channelId, limit: String(limit) })
+        // Asked for more than wanted, on purpose. Slack's `limit` counts raw
+        // entries, and joins, topic changes and empty messages are filtered out
+        // below — so asking for exactly N and then dropping three of them means
+        // `/translate 5` quietly translates two. The surplus is trimmed after
+        // filtering instead, which is where the count actually means something.
+        const query = new URLSearchParams({
+          channel: channelId,
+          limit: String(Math.min(limit * 2 + 5, MAX_FETCH)),
+        })
         const response = await fetchImpl(`${ENDPOINT}?${query.toString()}`, {
           // A read, and only ever a read: GET, no body. There is nothing in
           // this file that could turn this call into a post even by mistake.
@@ -95,9 +119,13 @@ export function createSlackHistory(userToken: string, fetchImpl: typeof fetch = 
         }
         if (body.ok !== true) return { ok: false, detail: body.error ?? 'unknown' }
 
+        // Trimmed here rather than by Slack: `limit` means "this many messages
+        // a person actually wrote", which is the only reading of it that makes
+        // `/translate 5` mean five.
         const messages = (body.messages ?? [])
           .map(toRecentMessage)
           .filter((m): m is RecentMessage => m !== undefined)
+          .slice(0, limit)
         return { ok: true, messages }
       } catch (err) {
         // A DNS failure, a dropped socket, a body that is not JSON. Reported
@@ -107,5 +135,28 @@ export function createSlackHistory(userToken: string, fetchImpl: typeof fetch = 
         return { ok: false, detail: `transport: ${String((err as Error)?.message ?? err)}` }
       }
     },
+  }
+}
+
+/**
+ * Whose account a token belongs to.
+ *
+ * Called once at startup so the process can say out loud whose history it is
+ * able to read, and so `src/app/command.ts` can refuse anybody else. A
+ * credential nobody checked the owner of is a credential nobody can be told
+ * about, which is why an unanswerable check comes back as `undefined` rather
+ * than as an optimistic guess.
+ */
+export async function whoOwns(userToken: string, fetchImpl: typeof fetch = fetch): Promise<string | undefined> {
+  try {
+    const response = await fetchImpl('https://slack.com/api/auth.test', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${userToken}` },
+    })
+    if (!response.ok) return undefined
+    const body = (await response.json()) as { ok?: boolean; user_id?: string }
+    return body.ok === true ? body.user_id : undefined
+  } catch {
+    return undefined
   }
 }

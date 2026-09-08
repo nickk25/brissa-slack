@@ -136,7 +136,13 @@ export function renderTranslation(translation: Translation, source?: Source): re
  * that produces nothing at all reads as broken — so every one of these is a case
  * where saying nothing would be worse than saying something small.
  */
-export type Notice = 'already-readable' | 'nothing-to-translate' | 'nobody-knows-you' | 'translation-failed'
+export type Notice =
+  | 'already-readable'
+  | 'nothing-to-translate'
+  | 'nobody-knows-you'
+  | 'translation-failed'
+  | 'not-your-account'
+  | 'cannot-read-here'
 
 const NOTICES: Record<Notice, string> = {
   // Deliberately not an apology. The reader asked, Brissa looked, and the answer
@@ -148,6 +154,15 @@ const NOTICES: Record<Notice, string> = {
   'nothing-to-translate': 'Nothing to translate — there are no messages here from anybody else.',
   'nobody-knows-you': 'Brissa does not know which languages you read yet, so it cannot tell what to translate.',
   'translation-failed': 'Could not translate that one. It is worth trying again.',
+  // The honest version of a real limitation. Reading a channel needs somebody's
+  // account, and right now Brissa holds exactly one — so for everybody else this
+  // command would read as a colleague, which is not a thing to do quietly.
+  'not-your-account':
+    '`/translate` reads history with one person\'s account, and it is not yours. The message shortcut on any message works for everybody.',
+  // Slack refused the read: a rate limit, an expired token, a channel that
+  // account is not in. Named rather than swallowed, because from the outside it
+  // is indistinguishable from Brissa being broken.
+  'cannot-read-here': 'Could not read this channel. The shortcut on a single message still works.',
 }
 
 /** One line, only for the person who asked. */

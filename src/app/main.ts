@@ -15,18 +15,18 @@ import { pathToFileURL } from 'node:url'
 import { defaultTranslator } from '../llm/decide.ts'
 import { connectSocketMode } from '../slack/socket.ts'
 import { readCommand } from '../slack/command.ts'
-import { createSlackHistory } from '../slack/history.ts'
+import { createSlackHistory, whoOwns } from '../slack/history.ts'
 import { readShortcut } from '../slack/shortcut.ts'
 import { createSlackApi } from '../slack/web.ts'
 import { createMemoryDirectory } from '../store/memory.ts'
 import { createMemorySeen } from '../store/seen.ts'
 import { readConfig } from './config.ts'
-import { handleCommand } from './command.ts'
+import { handleCommand, refuseCommand } from './command.ts'
 import { handleShortcut } from './shortcut.ts'
 import { describe } from './report.ts'
 import { acceptEnvelope, type Work } from './http.ts'
 
-export function main(): void {
+export async function main(): Promise<void> {
   const configured = readConfig(process.env)
 
   if (!configured.ok) {
@@ -64,6 +64,23 @@ export function main(): void {
       : '  channels  none — set BRISSA_CHANNELS, or Brissa will stay silent everywhere',
   )
 
+  // Asked once, out loud. Brissa holds one credential for reading history, and
+  // whoever it belongs to is the only person `/translate` can serve — so the
+  // process says whose it is at startup rather than leaving it to be inferred
+  // from whose commands happen to work.
+  const historyPorts =
+    config.userToken === undefined
+      ? {}
+      : { history: createSlackHistory(config.userToken), historyOwner: await whoOwns(config.userToken) }
+
+  if (config.userToken === undefined) {
+    console.log('  /translate  off — no SLACK_USER_TOKEN, so no account to read a channel with')
+  } else if (historyPorts.historyOwner === undefined) {
+    console.log('  /translate  off — SLACK_USER_TOKEN was refused by Slack, so its owner is unknown')
+  } else {
+    console.log(`  /translate  reads history as ${historyPorts.historyOwner}, and only for them`)
+  }
+
   const connection = connectSocketMode({
     appToken: config.appToken,
     onStatus: (status) => console.log(`  ${status}`),
@@ -76,17 +93,17 @@ export function main(): void {
     onCommand: (payload) => {
       const read = readCommand(payload)
       if (!read.ok) {
-        console.log(`  command ignored: ${read.because}`)
+        console.log(`  command refused: ${read.because}`)
+        // Answered when the payload said where to. Slack acknowledged the
+        // command already, so a refusal that only reaches this terminal is a
+        // command that silently did nothing.
+        if (read.responseUrl !== undefined) void refuseCommand(read.responseUrl, read.because)
         return
       }
-      const history = config.userToken === undefined ? undefined : createSlackHistory(config.userToken)
-      if (history === undefined) {
-        console.log('  /translate needs SLACK_USER_TOKEN — see .env.example')
-        return
-      }
-      void handleCommand({ ...work.ports, history }, read.command).then((outcome) => {
+      void handleCommand({ ...work.ports, ...historyPorts }, read.command).then((outcome) => {
         const what = outcome.kind === 'noticed' ? `noticed:${outcome.notice}` : outcome.kind
-        console.log(`  ${read.command.channelId}  /translate  ${what}`)
+        const why = 'detail' in outcome ? ` — ${outcome.detail}` : ''
+        console.log(`  ${read.command.channelId}  /translate  ${what}${why}`)
       })
     },
     onInteractive: (payload) => {
@@ -135,4 +152,4 @@ export function main(): void {
 }
 
 // Guarded so a test can import `describe` without starting a websocket.
-if (argv[1] !== undefined && import.meta.url === pathToFileURL(argv[1]).href) main()
+if (argv[1] !== undefined && import.meta.url === pathToFileURL(argv[1]).href) void main()

@@ -391,4 +391,7 @@ And nothing counts anything. `report` prints a line to a terminal.
   cannot read a channel and says so, while the shortcut carries its own text and
   is unaffected. Requiring it would make everyone grant a broad read permission
   for a feature that never needed one. `test: INV-app-67`
+- Nobody translates a channel with somebody else's account. `test: INV-app-68`
+- An unverified account is refused too. `test: INV-app-69`
+- Text you hand over needs no account at all. `test: INV-app-70`
 
