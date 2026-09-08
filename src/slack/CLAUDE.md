@@ -256,3 +256,49 @@ a revoked app token does not reconnect in a tight loop forever.
   and then drops does not wait thirty seconds it earned days earlier.
   `test: INV-slack-45`
 
+## The shortcut, and why it is the better half
+
+`chat.postEphemeral` requires the app to be a member of the channel, and only
+reaches a reader who is currently active. Both are quoted above. The message-menu
+shortcut has neither constraint, and gets there by a different door:
+
+> "The `response_url` will bypass any channel posting permissions when used as a
+> part of an app's action."
+
+> "By default, a message published via `response_url` will be sent as an
+> ephemeral message."
+
+No membership, so no join message and nothing in the member list. In a Slack
+Connect channel the other organisation cannot even see the shortcut exists —
+"message actions are not shared; they are limited only to the team that has
+installed the app". And the reader is by definition looking at Slack at the
+moment they ask, which is the delivery condition the automatic path can only hope
+for.
+
+The cost is a click per message. That is the trade, and it is the right way
+round.
+
+`response_type` is never sent. Ephemeral is the documented default; naming it
+invites somebody to change it to `in_channel` one day and publish a colleague's
+translation to the room.
+
+- A shortcut says who asked, whose message it was, and where to answer.
+  `test: INV-slack-46`
+- Asking about your own message is allowed here. On the automatic path that is
+  `own-message` and it is skipped; refusing a request because nobody requested it
+  makes no sense. `test: INV-slack-47`
+- A bot's message still has an author when somebody asks to read it.
+  `test: INV-slack-48`
+- A shortcut with nowhere to answer is refused. Answering is the entire
+  interaction. `test: INV-slack-49`
+- Anything that is not a message shortcut is refused by name. `test: INV-slack-50`
+- A thread reply keeps its thread; a top-level message carries none.
+  `test: INV-slack-51`
+- The private answer never names its own response type. `test: INV-slack-52`
+- An answer that never arrived is reported, not thrown. `test: INV-slack-53`
+- The response budget is the one Slack documents — five answers within thirty
+  minutes — written down because the number decides whether a retry is possible
+  at all and nothing else in the code says it. `test: INV-slack-54`
+- An interaction is acknowledged and handed on unparsed: this module knows the
+  frame, `shortcut.ts` knows what is inside it. `test: INV-slack-55`
+

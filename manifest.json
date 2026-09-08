@@ -9,13 +9,22 @@
     "bot_user": {
       "display_name": "Brissa",
       "always_online": false
-    }
+    },
+    "shortcuts": [
+      {
+        "name": "Translate for me",
+        "type": "message",
+        "callback_id": "translate_message",
+        "description": "Read this message in your own language. Only you see it."
+      }
+    ]
   },
   "oauth_config": {
     "scopes": {
       "bot": [
-        "chat:write",
         "channels:history",
+        "chat:write",
+        "commands",
         "groups:history",
         "im:history",
         "mpim:history"
@@ -32,7 +41,7 @@
       ]
     },
     "interactivity": {
-      "is_enabled": false
+      "is_enabled": true
     },
     "socket_mode_enabled": true,
     "org_deploy_enabled": false,

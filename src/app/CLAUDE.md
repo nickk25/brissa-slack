@@ -226,6 +226,41 @@ has its own test elsewhere — `INV-llm-01` and `INV-llm-08` for the adapter,
 **composition**: the JSON the model returns becoming a block a reader can read,
 with no fake standing between them.
 
+## The shortcut: one rule removed, one added
+
+`shortcut.ts` is the same pipeline as `handle.ts` with two changes, and both
+follow from one fact — **the reader asked for this**.
+
+**`shouldAsk` is not consulted.** Every rule in it decides whether a translation
+is worth appearing *unprompted*: is the channel on, is this a bot, is it your own
+message, is there anything to read. Somebody who clicked has answered all of
+them, and re-asking would mean refusing a request on the grounds that nobody
+requested it. The channel policy in particular must not apply — the whole point
+is that this works in channels Brissa is not in and cannot see.
+
+**It always answers.** On the automatic path silence is the product. Here a click
+that produces nothing is a broken button, so every path ends in something the
+reader can act on: the translation, or one line saying why there is none.
+
+The reader is looked up by **who clicked**, never by who is in the channel. The
+answer goes to one person by construction, so the languages must be theirs.
+
+- A channel Brissa was never switched on in is still translated on request.
+  `test: INV-app-45`
+- Your own message is translated when you ask for it. `test: INV-app-46`
+- A click always gets an answer, even when there is nothing to translate.
+  `test: INV-app-47`
+- A failure is told to the person waiting on it, whether the port returned it or
+  threw it. `test: INV-app-48`
+- Somebody Brissa has never heard of is told so rather than ignored — the first
+  thing a new person does is click the button, and meeting them with nothing is
+  indistinguishable from being broken. `test: INV-app-49`
+- The reader is whoever clicked, not whoever is in the channel. `test: INV-app-50`
+- A shortcut this app does not own is left alone. `test: INV-app-51`
+- An answer that could not be sent is its own outcome, distinct from having
+  nothing to say. `test: INV-app-52`
+- A directory that breaks is reported rather than answered. `test: INV-app-53`
+
 ## Configuration, and the composition root
 
 `config.ts` turns the environment into the two facts Brissa cannot run without:

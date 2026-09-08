@@ -80,6 +80,10 @@ that answered it in advance was a contract stating something false.
 - A translation whose source language is unknown still says it was translated;
   otherwise the context line reads "Translated from " and trails off, which looks
   like the bug it is not. `test: INV-core-23`
+- Every notice is one line, and none of them apologises. Notices exist only
+  because somebody clicked and there was no translation to show: silence would
+  read as a broken button, a paragraph as an incident, and "you can already read
+  this" is information rather than a failure. `test: INV-core-24`
 
 ## Why rendering is here and not in the adapter
 
