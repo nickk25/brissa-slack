@@ -173,3 +173,71 @@ first saved. Failing that handshake means the app can never be installed at all.
   edge answer with an error, and a run of those is what makes Slack disable an
   app's event subscriptions altogether. `test: INV-slack-32`
 
+## The real client, which is one HTTP call
+
+`web.ts` answers `SlackApi` with `fetch`. No SDK: the interface is one method
+wide and `chat.postEphemeral` is a POST with a bearer token and a JSON body, so a
+dependency here would be a package tree, a release cadence and a changelog to
+follow in order to avoid writing twelve lines.
+
+It must never throw. Slack answers **200 with `ok: false`** for application
+errors and a non-2xx for the ones that never reached the application, and a
+dropped socket is neither — all three have to arrive in the same shape, because
+`sendEphemeral` above turns that shape into outcomes and an exception would land
+somewhere with no vocabulary for it.
+
+- The call carries the token and the request as Slack expects them.
+  `test: INV-slack-33`
+- Slack refusing with a 200 is still a refusal; reading only the status code
+  would count every one of those as a delivered translation. `test: INV-slack-34`
+- A failure that never reached the application still has a name.
+  `test: INV-slack-35`
+- A dropped connection is reported, never thrown. `test: INV-slack-36`
+
+## Socket Mode, and the check that is deliberately absent
+
+`socket.ts` is Slack's other way of delivering the same envelopes: the machine
+running Brissa opens a websocket **outward**, and Slack pushes events down it. No
+public URL, no tunnel, no deployment — the only reason any of this can be run
+before any of it has been deployed.
+
+The security model differs, and it looks like something is missing. Over HTTP
+Slack signs every request and `verify.ts` proves it. Over a websocket **the
+connection is the proof**: it was opened with an app-level token against a URL
+Slack issued for this app alone. There is no signature on these frames and none
+is expected.
+
+What does not change is the acknowledgement. Slack redelivers an envelope it has
+not heard back about within three seconds, exactly as over HTTP — so the ack goes
+out before the work starts, and `Seen` catches whatever slips through. The two
+paths share `acceptEnvelope` for precisely this reason; written twice, they would
+drift.
+
+Reconnecting is the normal case rather than the error case: Slack sends
+`disconnect` before its own deploys. The backoff exists for the abnormal one, so
+a revoked app token does not reconnect in a tight loop forever.
+
+- An event frame yields the id to acknowledge and the envelope inside it.
+  `test: INV-slack-37`
+- `hello` and `disconnect` are recognised, and neither is an error.
+  `test: INV-slack-38`
+- A frame this app has no use for is named rather than mistaken for one —
+  including an `events_api` frame with no envelope id, which cannot be
+  acknowledged, so acting on it would guarantee the redelivery it was meant to
+  prevent. `test: INV-slack-39`
+- The envelope is acknowledged before it is handed on. `test: INV-slack-40`
+- A frame with nothing to act on is acknowledged to nobody; acknowledging one we
+  did not understand would tell Slack it was handled. `test: INV-slack-41`
+- A closed connection is reopened, because Slack closes them routinely — it sends
+  `disconnect` before its own deploys, and treating that as a failure would mean
+  Brissa stops working every time Slack ships. `test: INV-slack-42`
+- Closing on purpose stays closed. The difference between "Slack dropped us" and
+  "we are shutting down"; a reconnect loop ignoring the second keeps a process
+  alive forever. `test: INV-slack-43`
+- A connection Slack refuses to open is said out loud and tried again. A revoked
+  app token fails there every time, and silence would leave a process that looks
+  alive and receives nothing. `test: INV-slack-44`
+- Arriving connected resets the backoff, so a connection that survives an hour
+  and then drops does not wait thirty seconds it earned days earlier.
+  `test: INV-slack-45`
+

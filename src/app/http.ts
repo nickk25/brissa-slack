@@ -31,15 +31,21 @@
  */
 
 import type { Seen } from '../core/seen.ts'
-import { readEnvelope, verifySignature, type Headers } from '../slack/verify.ts'
+import { readEnvelope, verifySignature, type Envelope, type Headers } from '../slack/verify.ts'
 import { handleMessage, type MessageOutcome, type Ports } from './handle.ts'
 
-export interface Edge {
+/**
+ * What it takes to act on an envelope whose origin is already settled.
+ *
+ * Split out from `Edge` because Slack has two ways of delivering the same
+ * envelope and only one of them is signed. Over a websocket the connection
+ * itself is the proof, so there is nothing to verify — but the deduplication and
+ * the ack-first ordering are identical, and having them written twice is how the
+ * two paths would drift.
+ */
+export interface Work {
   readonly ports: Ports
-  readonly signingSecret: string
   readonly seen: Seen
-  /** Injected so a test needs no control over the clock. */
-  readonly now?: () => number
   /**
    * Where an outcome goes once the work is done.
    *
@@ -53,6 +59,12 @@ export interface Edge {
    * assert on what happened after the response was already sent.
    */
   readonly report: (outcome: MessageOutcome) => void
+}
+
+export interface Edge extends Work {
+  readonly signingSecret: string
+  /** Injected so a test needs no control over the clock. */
+  readonly now?: () => number
 }
 
 export interface HttpRequest {
@@ -82,14 +94,13 @@ const answer = (status: number, body: string, done: Promise<void> = NOTHING): Ht
   done,
 })
 
-export async function handleRequest(edge: Edge, request: HttpRequest): Promise<HttpResponse> {
-  const now = edge.now?.() ?? Date.now()
-
-  const signature = verifySignature(edge.signingSecret, request.body, request.headers, now)
-  if (!signature.ok) return answer(401, signature.because)
-
-  const envelope = readEnvelope(request.body, request.headers)
-
+/**
+ * An envelope that is already known to have come from Slack.
+ *
+ * Everything here is common to both delivery paths: recognise a redelivery,
+ * answer, and only then start the work.
+ */
+export async function acceptEnvelope(work: Work, envelope: Envelope): Promise<HttpResponse> {
   // Sent once, when the endpoint URL is first saved in app settings, and it is
   // answered with the challenge itself as plain text. Getting this wrong means
   // the app can never be installed at all.
@@ -108,13 +119,13 @@ export async function handleRequest(edge: Edge, request: HttpRequest): Promise<H
 
   // Answered 200 either way: a redelivery Slack sent because it never heard back
   // is not an error, and reporting one would only produce another retry.
-  if (!(await edge.seen.firstTime(envelope.eventId))) return answer(200, 'duplicate')
+  if (!(await work.seen.firstTime(envelope.eventId))) return answer(200, 'duplicate')
 
   // The one line this whole file exists to arrange: started, deliberately not
   // awaited, and returned alongside a response that has already been decided.
-  const done = handleMessage(edge.ports, envelope.event)
+  const done = handleMessage(work.ports, envelope.event)
     .then((outcome) => {
-      edge.report(outcome)
+      work.report(outcome)
     })
     .catch(() => {
       // `handleMessage` documents that it never rejects and its tests hold it to
@@ -124,4 +135,13 @@ export async function handleRequest(edge: Edge, request: HttpRequest): Promise<H
     })
 
   return answer(200, 'ok', done)
+}
+
+export async function handleRequest(edge: Edge, request: HttpRequest): Promise<HttpResponse> {
+  const now = edge.now?.() ?? Date.now()
+
+  const signature = verifySignature(edge.signingSecret, request.body, request.headers, now)
+  if (!signature.ok) return answer(401, signature.because)
+
+  return acceptEnvelope(edge, readEnvelope(request.body, request.headers))
 }

@@ -222,13 +222,65 @@ has its own test elsewhere — `INV-llm-01` and `INV-llm-08` for the adapter,
 **composition**: the JSON the model returns becoming a block a reader can read,
 with no fake standing between them.
 
+## Configuration, and the composition root
+
+`config.ts` turns the environment into the two facts Brissa cannot run without:
+who reads what, and where it is switched on. Both live in `.env` because
+`src/store` serves them from a literal, and this is the file that changes on the
+day they come from somewhere else.
+
+It reports every problem at once rather than throwing on the first. The person
+reading that message is doing setup for the first time, and telling them one
+thing four times is four restarts.
+
+`main.ts` is the composition root: the only file where a port meets a real thing,
+the only one that reads `process.env`, and the only one where the Anthropic SDK,
+Slack's websocket and a set in memory appear together. Everything above it can be
+tested without a network because this is where the network is. It is guarded so
+importing it does not start it.
+
+It is the one file excluded from mutation testing, and the exclusion is the
+argument for keeping it empty: a composition root scores zero because there is
+nothing in it to get wrong except which name is bound to which. The moment a
+decision appears here it should move to a file that is measured — which is
+exactly why `describe` lives in `report.ts` rather than four lines above.
+
+The channel id is printed on every line it logs, for one unglamorous reason:
+switching Brissa on in a channel requires that channel's id, and Slack's own
+interface does not show it anywhere. Watching a message arrive is how you find
+out what to put in `BRISSA_CHANNELS`.
+
+- A reader is a person and the languages they read, in their order — the first is
+  the one messages are translated into, so `es,en` and `en,es` are different
+  people to serve. `test: INV-app-36`
+- A reader with no languages is refused rather than created. `shouldAsk` reads an
+  empty list as "has not finished setting up" and stays silent, which from the
+  outside is indistinguishable from Brissa being broken. `test: INV-app-37`
+- An entry that is not a reader says so by name. `test: INV-app-38`
+- A channel is off unless it is listed, and no channels is not an error but the
+  honest first state. `test: INV-app-39`
+- Every problem is reported at once, not the first one. `test: INV-app-40`
+- The model is the one that was measured unless something says otherwise — named
+  here rather than defaulted inside the adapter, because which model runs is a
+  decision recorded in `docs/DECISIONS.md` and scored by the eval.
+  `test: INV-app-41`
+- A message nobody was told about says why in one word. `test: INV-app-42`
+- Readers are counted by what happened to them, and skips by their reason: a run
+  of thirty `channel-disabled` and one delivery should read as two numbers, not
+  thirty-one lines. `test: INV-app-43`
+- A failure is spelled out rather than counted away. Everything else there is a
+  tally; a failure is the one outcome where the number tells you nothing and the
+  reason is the whole message. `test: INV-app-44`
+
 ## Still missing
 
-A process. `handleRequest` and `handleMessage` are complete and **nothing calls
-either of them** — there is no server, no Socket Mode client, and no config
-saying which languages anybody reads.
+A way to say "translate for me" from inside Slack. Readers and channels are
+environment variables, which means every change is an edit and a restart, by
+whoever has the machine.
 
-`manifest.json` currently enables Socket Mode and declares no request URL, so as
-committed Slack will never POST to this edge at all. That is the right default
+`handleRequest` still has nothing pointed at it: `manifest.json` enables Socket
+Mode and declares no request URL, so Slack never POSTs. That is the right default
 for something nobody has deployed, and it does mean the HTTP path is finished
 before it is reachable.
+
+And nothing counts anything. `report` prints a line to a terminal.

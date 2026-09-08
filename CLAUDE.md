@@ -103,6 +103,8 @@ Generated from `package.json`. Do not edit by hand.
 | `npm run gate:plan` | `node tools/agentic/gate.mjs --plan` |
 | `npm run invariants` | `node tools/agentic/invariants.mjs` |
 | `npm run mutate` | `stryker run` |
+| `npm run smoke` | `node --experimental-strip-types --env-file-if-exists=.env tools/smoke.mjs` |
+| `npm run start` | `node --experimental-strip-types --env-file-if-exists=.env src/app/main.ts` |
 | `npm run state` | `node tools/agentic/state.mjs` |
 | `npm run state:snapshot` | `node tools/agentic/state.mjs snapshot` |
 | `npm run test` | `node --test 'tools/agentic/**/*.test.mjs' && node --experimental-strip-types --test 'src/**/*.test.ts'` |
