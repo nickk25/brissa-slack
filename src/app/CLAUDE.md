@@ -311,6 +311,65 @@ out what to put in `BRISSA_CHANNELS`.
   tally; a failure is the one outcome where the number tells you nothing and the
   reason is the whole message. `test: INV-app-44`
 
+## The command: a second door, and why it still needs a translation each time
+
+`/translate` is the shortcut's `shouldAsk`-free, always-answers rule again — the
+same two changes, for the same reason: somebody asked. What is new is where the
+text comes from. The shortcut already has it, in the payload Slack sent when
+somebody clicked a specific message. A command has typed a channel and,
+sometimes, a number or a sentence — it has to go and find the message itself,
+through `History`, before there is anything to translate at all.
+
+That lookup is why this flow, alone among the ones in this file, can fail in a
+way the shortcut cannot: a broken `History` read. It is treated exactly like a
+broken `Directory` — reported as its own outcome, not answered, because an
+infrastructure failure is not something the person waiting on a click can act
+on the way "translate that again" is.
+
+**One honest gap.** When `History` finds nothing to point at — an empty
+channel, or a caller who has only ever talked to themselves — there is no
+notice in `render.ts` that says that precisely. `already-readable` is reused
+because refusing to answer at all is worse, but its wording ("this is already in
+a language you read") is not quite true of an empty result. Fixing that
+precisely needs a new `Notice`, which means editing `src/core/render.ts`; this
+module does not own that file, so the mismatch is recorded here rather than
+patched around it.
+
+**A partial failure is still visible.** Translating several messages at once
+means several independent translator calls, and one of them failing must not
+quietly shrink the reply to "everything worked" — the failure notice rides
+alongside whatever did translate, once, rather than being dropped or repeated
+once per failed message.
+
+- No argument translates the most recent message that is not the caller's own.
+  `test: INV-app-54`
+- An explicit count translates the last N messages, including the caller's own
+  — asking for a number is itself the request that `own-message` exists to wait
+  for. `test: INV-app-55`
+- Literal text is translated directly, without `History` being asked anything
+  at all — the argument already said what to translate.
+  `test: INV-app-56`
+- A target that produces nothing is still answered, not left silent — a
+  command that finds nothing is a broken button, the same as it is for the
+  shortcut. `test: INV-app-57`
+- A translation failure among several successes stays visible, never silently
+  dropped, and a batch that fails entirely answers with the failure itself
+  rather than an empty success. `test: INV-app-58`
+- A directory failure is reported rather than answered. `test: INV-app-59`
+- A history failure is reported rather than answered, for the same reason a
+  directory failure is: it is somebody's job to fix, not the caller's to be
+  told to retry. `test: INV-app-60`
+- Somebody Brissa has never heard of is told so, not ignored — and the reader
+  is looked up before `History` is ever asked anything, so a stranger costs no
+  read at all. `test: INV-app-61`
+- A slash command this app does not own is left alone. `test: INV-app-62`
+- An answer that could not be sent is its own outcome, distinct from having
+  nothing to say. `test: INV-app-63`
+- Nothing here writes to a log, a file, or any store — a full run, from lookup
+  to reply, makes no call to any logging surface. Restraint applies to where a
+  message's text can end up, not only to whether Brissa speaks in the channel.
+  `test: INV-app-64`
+
 ## Still missing
 
 A way to say "translate for me" from inside Slack. Readers and channels are
@@ -323,3 +382,16 @@ for something nobody has deployed, and it does mean the HTTP path is finished
 before it is reachable.
 
 And nothing counts anything. `report` prints a line to a terminal.
+
+## Two things the anchor decides
+
+- Text you typed yourself is not quoted back at you. `test: INV-app-65`
+- A message somebody else wrote still carries who wrote it. `test: INV-app-66`
+- A missing user token is a working state rather than a fault: `/translate`
+  cannot read a channel and says so, while the shortcut carries its own text and
+  is unaffected. Requiring it would make everyone grant a broad read permission
+  for a feature that never needed one. `test: INV-app-67`
+- Nobody translates a channel with somebody else's account. `test: INV-app-68`
+- An unverified account is refused too. `test: INV-app-69`
+- Text you hand over needs no account at all. `test: INV-app-70`
+

@@ -33,9 +33,9 @@ test('INV-slack-38 hello and disconnect are recognised, and neither is an error'
 })
 
 test('INV-slack-39 a frame this app has no use for is named rather than mistaken for one', async () => {
-  assert.deepEqual(readFrame('{"type":"slash_commands","envelope_id":"E1"}'), {
+  assert.deepEqual(readFrame('{"type":"some_future_thing","envelope_id":"E1"}'), {
     kind: 'other',
-    type: 'slash_commands',
+    type: 'some_future_thing',
   })
   // An events_api frame with no envelope id cannot be acknowledged, so acting on
   // it would guarantee the redelivery it was meant to prevent.
@@ -263,5 +263,41 @@ test('INV-slack-55 an interaction is acknowledged and handed on unparsed', async
 
   assert.deepEqual(order, ['ack:Env9', 'handed on'])
   assert.deepEqual(seen, [{ type: 'message_action' }])
+  connection.close()
+})
+
+test('INV-slack-67 a slash command is acknowledged and handed on unparsed', async () => {
+  // Same discipline as an interaction: this module knows the frame, `command.ts`
+  // knows what is inside it, and the ack goes first because Slack redelivers
+  // anything it has not heard back about within three seconds.
+  const order: string[] = []
+  const listeners = new Map<string, (event: { data: unknown }) => void>()
+  const socket: Socket = {
+    send: (data) => order.push(`ack:${JSON.parse(data).envelope_id}`),
+    close: () => {},
+    addEventListener: ((type: string, listener: (event: { data: unknown }) => void) => {
+      listeners.set(type, listener)
+    }) as Socket['addEventListener'],
+  }
+
+  const seen: unknown[] = []
+  const connection = connectSocketMode({
+    appToken: 'xapp-x',
+    open: () => socket,
+    fetchImpl: (async () => ({ json: async () => ({ ok: true, url: 'wss://example.test' }) })) as unknown as typeof fetch,
+    onEnvelope: () => order.push('event'),
+    onCommand: (payload) => {
+      order.push('handed on')
+      seen.push(payload)
+    },
+  })
+
+  await new Promise((r) => setTimeout(r, 0))
+  listeners.get('message')?.({
+    data: JSON.stringify({ type: 'slash_commands', envelope_id: 'Env3', payload: { command: '/translate' } }),
+  })
+
+  assert.deepEqual(order, ['ack:Env3', 'handed on'])
+  assert.deepEqual(seen, [{ command: '/translate' }])
   connection.close()
 })

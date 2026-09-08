@@ -171,7 +171,7 @@ test('INV-core-24 every notice is one line, and none of them apologises', () => 
   // to show. Silence would read as a broken button; a paragraph would read as an
   // incident. One line, and "you can already read this" is information rather
   // than a failure.
-  for (const notice of ['already-readable', 'nobody-knows-you', 'translation-failed'] as const) {
+  for (const notice of ['already-readable', 'nothing-to-translate', 'nobody-knows-you', 'translation-failed'] as const) {
     const blocks = renderNotice(notice)
     assert.equal(blocks.length, 1)
     const c = context(blocks)
@@ -180,4 +180,18 @@ test('INV-core-24 every notice is one line, and none of them apologises', () => 
     assert.ok(!c.elements[0]?.text.includes('\n'))
     assert.ok(!/sorry|apolog/i.test(c.elements[0]?.text ?? ''))
   }
+})
+
+test('INV-core-25 a translation with no source to point at carries no anchor', () => {
+  // The anchor disambiguates one ephemeral from another at the bottom of a
+  // channel. Text somebody typed into a command a second ago needs no such help,
+  // and quoting them back under their own name is the app repeating them.
+  const blocks = renderTranslation({ text: 'Buenos días a todos.', foundLanguages: ['de'] })
+  const s = section(blocks)
+  assert.ok(s?.type === 'section')
+  assert.equal(s.text.text, 'Buenos días a todos.')
+  assert.ok(!s.text.text.includes('>'))
+
+  // And it is still two blocks: the context line says where it came from either way.
+  assert.equal(blocks.length, 2)
 })
