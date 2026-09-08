@@ -75,87 +75,6 @@ const arg = (name, fallback) => {
 const flag = (name) => process.argv.includes(`--${name}`)
 
 /* ---------------------------------------------------------------------------
- * "Already readable" — the difference between `c-001`'s `Hi all.` and its
- * `Sorry, aber wir sollten alle an board haben`.
- *
- * Both are short lines that can end up byte-for-byte in the output. One of
- * them belongs there: the reader reads English, so an English line staying
- * English is the translator correctly doing nothing, not the translator
- * failing to do something. The other is German surviving into a translation
- * for a reader never shown to read German — the actual bug this file exists to
- * catch. A check that only asks "does this source line appear in the output"
- * cannot tell those two apart; it would flag the greeting as loudly as the
- * failure, and the report would be too noisy to read let alone trust.
- *
- * The distinguishing test: strip punctuation, and see whether most of a
- * line's words are closed-class function words — articles, pronouns,
- * conjunctions, a handful of common greetings — belonging to a language the
- * reader reads. `Hi all.` is two words, both common English function/greeting
- * words: 100%. `Sorry, aber wir sollten alle an board haben` is mostly German
- * function words (`aber`, `wir`, `sollten`, `haben`) plus a couple of
- * English-shaped tokens (`sorry`, `an`, `board` are all real English words,
- * deliberately left out of the English list below for exactly this reason —
- * they are also loanwords or false friends in German) — nowhere near a
- * majority.
- *
- * HONESTY: this is not language identification. It leans on the fact that
- * function words differ sharply between unrelated languages even when content
- * words are borrowed freely between them, and it is wrong in both directions:
- *
- *   - A genuinely untranslated line built mostly from loanwords and short
- *     shared words could read as "already readable" when it is not. That is a
- *     false negative for this tool: a real failure goes unreported.
- *   - A legitimately-kept line with almost no function words at all — a
- *     two-word product name, a person's name on its own line — could read as
- *     "not readable" and get flagged as survived when it is fine. That is
- *     noise in the report, not a real failure.
- *
- * Both are why this reports rather than blocks, and why the per-case detail is
- * printed rather than only the total: a human reading five flagged lines can
- * tell in a second which of them is `board`-in-German and which is a product
- * name that was never going to translate.
- * ------------------------------------------------------------------------ */
-const FUNCTION_WORDS = {
-  en: new Set([
-    'a', 'the', 'is', 'are', 'am', 'was', 'were', 'be', 'been', 'being',
-    'i', 'you', 'he', 'she', 'it', 'we', 'they', 'this', 'that', 'these', 'those',
-    'and', 'or', 'but', 'not', 'no', 'yes', 'hi', 'hello', 'hey', 'all',
-    'of', 'to', 'in', 'on', 'for', 'with', 'at', 'by', 'from', 'as', 'so',
-    'do', 'does', 'did', 'have', 'has', 'had', 'will', 'would', 'can', 'could', 'should',
-    'thanks', 'thank', 'please', 'yeah', 'yep', 'ok', 'okay',
-  ]),
-  es: new Set([
-    'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'de', 'del',
-    'y', 'o', 'pero', 'no', 'si', 'es', 'son', 'era', 'fue', 'yo', 'tu',
-    'ella', 'nosotros', 'ellos', 'este', 'esta', 'estos', 'estas',
-    'que', 'en', 'a', 'por', 'para', 'con', 'como', 'hola', 'gracias',
-    'todos', 'todas', 'favor',
-  ]),
-}
-
-/** Lowercase words, letters and digits only — punctuation is not a token. */
-function words(line) {
-  return line.toLowerCase().match(/[\p{Letter}\p{Number}]+/gu) ?? []
-}
-
-/**
- * True when at least half of a line's words are closed-class words of a
- * language the reader reads. See the block comment above for what this can
- * and cannot see — it is a heuristic, and known to be wrong in both directions.
- */
-export function isAlreadyReadable(line, reads) {
-  const tokens = words(line)
-  if (tokens.length === 0) return false
-  for (const code of reads) {
-    const known = FUNCTION_WORDS[code]
-    if (!known) continue // no list for this language: cannot vouch for it, so don't
-    const hits = tokens.filter((t) => known.has(t)).length
-    if (hits / tokens.length >= 0.5) return true
-  }
-  return false
-}
-
-/* ---------------------------------------------------------------------------
  * Verbatim, or close enough to it that the model plainly did not touch the
  * line — a normalised Levenshtein ratio rather than exact string equality, so
  * a translator that only reflows whitespace or fixes a stray space doesn't get
@@ -198,6 +117,16 @@ const MIN_LINE_LENGTH = 3
 /**
  * The lines of `source` that reappear, essentially unchanged, in `translated`.
  *
+ * This is a candidate list, not a verdict. A line lands here whenever it
+ * survived the trip byte-for-byte-ish, and that alone cannot say whether
+ * surviving was correct — `c-001`'s `Hi all.` and its `Sorry, aber wir
+ * sollten alle an board haben` both survive, and only one of them is a bug.
+ * Telling those apart used to be this file's job, done with a count of
+ * closed-class function words; it was wrong on ordinary sentences (see
+ * `docs/DECISIONS.md` for the case that killed it) and has been deleted
+ * rather than tuned. What decides a candidate now is `probeSurvivedLine`,
+ * below — every candidate this returns gets asked about, one at a time.
+ *
  * `hasNothingToRead` is a required parameter rather than an import: this
  * module has no static dependency on any TypeScript file (see the file
  * header), so the real one — `src/core/ask.ts` — is handed in by the caller.
@@ -212,13 +141,72 @@ export function findSurvivedLines({ source, translated, reads, hasNothingToRead 
     const line = raw.trim()
     if (!line) continue
     if (hasNothingToRead(line)) continue // emoji-only, code, a bare url, an @mention: nothing to translate
-    if (isAlreadyReadable(line, reads)) continue // already in a language the reader reads
     const normalised = normalise(line)
     if (normalised.length < MIN_LINE_LENGTH) continue
     const match = translatedLines.find((t) => similarity(normalised, t) >= SIMILARITY_THRESHOLD)
     if (match !== undefined) survived.push({ line, matchedAgainst: match })
   }
   return survived
+}
+
+/* ---------------------------------------------------------------------------
+ * Asking about a survived line, instead of guessing about it.
+ *
+ * The heuristic this replaces tried to tell "correctly left alone" from
+ * "should have been translated" by counting function words — articles,
+ * pronouns, a handful of greetings — and calling a line readable once half
+ * its tokens matched. It read as principled and was wrong on plain sentences:
+ * natural text runs roughly 40-50% function words, so anything with three or
+ * four content words already falls under the bar. `Perfecto, nos vemos el
+ * viernes.` (pure Spanish, for a reader who reads Spanish) and `Can you
+ * review the deployment pipeline configuration?` (pure English, same reader)
+ * both got flagged as untranslated failures under the old rule. A tool that
+ * cries wolf on ordinary input is a tool nobody reads —
+ * `tools/agentic/mutation-floor.mjs` makes this exact argument about a
+ * threshold nobody meets. The fix is not a better threshold; it is not asking
+ * a word-counter at all.
+ *
+ * What this asks instead is the one component in this repository with a
+ * measured score: the decision itself. `createTranslator`'s prompt already
+ * answers, for a piece of text and a reader's `reads`, whether that reader
+ * needs it translated — that is exactly the question a survived line raises,
+ * asked about the line on its own rather than about the whole message it came
+ * from. `docs/DECISIONS.md` records that decision at 28/28 on the development
+ * corpus and 26/26 held out. This is that same function, called a second
+ * time, on a shorter piece of text:
+ *
+ *   - `silent`     the model judges this line readable by this reader. It was
+ *                   right to leave it alone — not a failure.
+ *   - `translated` the model judges this line NOT readable. It should have
+ *                   come back translated in the first pass and did not. THAT
+ *                   is the failure this file exists to catch.
+ *   - `failed`     the probe itself broke (network, overload, a malformed
+ *                   response). Neither a pass nor a failure — reported as its
+ *                   own thing, in its own bucket, never folded into "clean"
+ *                   by default.
+ *
+ * HONESTY, stated plainly rather than left to be discovered: this is not a
+ * model grading a translation, but it is also not the same measurement
+ * `docs/DECISIONS.md` scored. That score was earned on whole messages, with
+ * whatever surrounding context they carried; here the same prompt sees one
+ * line, alone, stripped of the sentences before and after it. Its accuracy on
+ * a single line out of context is assumed, not measured, and a line whose
+ * meaning depends on its neighbours — a fragment, a reply that only makes
+ * sense next to the message above it — is exactly where this will be
+ * weakest. Nothing here checks that assumption; a human reading the flagged
+ * lines still does the final call, the same way `docs/DECISIONS.md` says the
+ * decision layer's own score should be revisited once quality is measured.
+ *
+ * COST: one extra model call per line that survived the first pass — not per
+ * source line, `findSurvivedLines` already narrows that down, but a second
+ * real request all the same. That is the honest reason this is a nightly, by
+ * hand, non-blocking run and not a check wired into every pull request.
+ */
+export async function probeSurvivedLine(line, translator, reads) {
+  const result = await translator.translate({ text: line, reads })
+  if (result.kind === 'silent') return { line, verdict: 'readable' }
+  if (result.kind === 'translated') return { line, verdict: 'flagged' }
+  return { line, verdict: 'unmeasured', detail: result.detail }
 }
 
 /**
@@ -228,14 +216,19 @@ export function findSurvivedLines({ source, translated, reads, hasNothingToRead 
  * port — `{ translate(request): Promise<TranslationResult> }` — never imported
  * as a type here, only relied on structurally, so a fake object satisfies it
  * with no TypeScript in sight. `main()` hands in the real one; the tests hand
- * in whatever a fixture needs.
+ * in whatever a fixture needs. The same translator answers both questions
+ * this file asks: "translate this message" for the run itself, and
+ * "translate this one surviving line" for each candidate it produced —
+ * one component, asked twice, never two different mechanisms pretending to
+ * agree.
  *
- * A run that comes back `silent` or `failed` is not this tool's problem to
- * report: `calibrate.mjs` already measures whether the *decision* was right,
- * and a case in this corpus scored `expected: "translate"` landing here as
- * anything but `translated` is a decision regression, not a quality one.
- * Counting it as "clean" would hide it, so it is kept, bucketed by kind, and
- * left out of `measured` rather than silently improving the score.
+ * A run that comes back `silent` or `failed` at the top level is not this
+ * tool's problem to report: `calibrate.mjs` already measures whether the
+ * *decision* was right, and a case in this corpus scored `expected:
+ * "translate"` landing here as anything but `translated` is a decision
+ * regression, not a quality one. Counting it as "clean" would hide it, so it
+ * is kept, bucketed by kind, and left out of `measured` rather than silently
+ * improving the score.
  */
 export async function runCase(c, translator, reads, runs, hasNothingToRead) {
   const perRun = []
@@ -245,7 +238,11 @@ export async function runCase(c, translator, reads, runs, hasNothingToRead) {
       perRun.push({ kind: result.kind, detail: result.kind === 'failed' ? result.detail : undefined })
       continue
     }
-    const survived = findSurvivedLines({ source: c.text, translated: result.translation.text, reads, hasNothingToRead })
+    const candidates = findSurvivedLines({ source: c.text, translated: result.translation.text, reads, hasNothingToRead })
+    const survived = []
+    for (const candidate of candidates) {
+      survived.push(await probeSurvivedLine(candidate.line, translator, reads))
+    }
     perRun.push({ kind: 'translated', survived })
   }
   return perRun
@@ -285,16 +282,23 @@ async function main() {
   for (const c of cases) {
     const perRun = await runCase(c, translator, corpus.reads, runs, hasNothingToRead)
     const measured = perRun.filter((r) => r.kind === 'translated')
-    const clean = measured.length > 0 && measured.every((r) => r.survived.length === 0)
-    const survivedLines = [...new Set(measured.flatMap((r) => r.survived.map((s) => s.line)))]
-    results.push({ id: c.id, runs: perRun, measured: measured.length, clean, survivedLines })
-    process.stdout.write(measured.length === 0 ? 'E' : clean ? '.' : 'X')
+    // Two separate buckets, on purpose: a `flagged` line is the probe saying
+    // this should have been translated and was not — the actual finding. An
+    // `unmeasured` line is the probe itself failing to answer — never worth
+    // the same weight, and never silently treated as "readable" just because
+    // it isn't `flagged`.
+    const flagged = [...new Set(measured.flatMap((r) => r.survived.filter((s) => s.verdict === 'flagged').map((s) => s.line)))]
+    const probeErrors = [...new Set(measured.flatMap((r) => r.survived.filter((s) => s.verdict === 'unmeasured').map((s) => s.line)))]
+    const clean = measured.length > 0 && flagged.length === 0
+    results.push({ id: c.id, runs: perRun, measured: measured.length, clean, flagged, probeErrors })
+    process.stdout.write(measured.length === 0 ? 'E' : flagged.length > 0 ? 'X' : probeErrors.length > 0 ? '?' : '.')
   }
   process.stdout.write('\n')
 
   const measuredCases = results.filter((r) => r.measured > 0)
   const dirty = measuredCases.filter((r) => !r.clean)
   const unmeasured = results.filter((r) => r.measured === 0)
+  const probeFailures = measuredCases.filter((r) => r.probeErrors.length > 0)
 
   const report = {
     model,
@@ -305,7 +309,8 @@ async function main() {
     casesConsidered: cases.length,
     measured: measuredCases.length,
     clean: measuredCases.filter((r) => r.clean).length,
-    survivedLines: dirty.map((r) => ({ id: r.id, lines: r.survivedLines })),
+    flaggedLines: dirty.map((r) => ({ id: r.id, lines: r.flagged })),
+    probeErrors: probeFailures.map((r) => ({ id: r.id, lines: r.probeErrors })),
     unmeasured: unmeasured.map((r) => r.id),
     results,
   }
@@ -316,13 +321,18 @@ async function main() {
   console.log(`${model}  ${corpusName}  prompt ${promptHash}  ${runs} runs per case`)
   console.log(`  cases considered  ${report.casesConsidered} (expected: translate)`)
   console.log(`  clean every run   ${report.clean}/${report.measured}`)
-  console.log(`  survived lines    ${dirty.map((r) => r.id).join(', ') || 'none'}`)
+  console.log(`  flagged lines     ${dirty.map((r) => r.id).join(', ') || 'none'}`)
+  if (probeFailures.length) console.log(`  probe failed on   ${probeFailures.length} case(s): ${probeFailures.map((r) => r.id).join(', ')}`)
   if (unmeasured.length) console.log(`  could not measure ${unmeasured.length}: ${unmeasured.map((r) => r.id).join(', ')}`)
   console.log(`  written to        ${out}`)
 
   for (const r of dirty) {
     console.log(`\n✗ ${r.id}`)
-    for (const line of r.survivedLines) console.log(`    survived: ${line}`)
+    for (const line of r.flagged) console.log(`    flagged: ${line}`)
+  }
+  for (const r of probeFailures) {
+    console.log(`\n? ${r.id} (probe failed — not counted clean or flagged)`)
+    for (const line of r.probeErrors) console.log(`    unmeasured: ${line}`)
   }
 
   // Same non-judgement `calibrate.mjs` makes, except when a human asks for
@@ -330,7 +340,7 @@ async function main() {
   // would make a report look like a broken tool. `--strict` is that human
   // choosing otherwise, on their own machine — it is never wired into a gate.
   if (strict && dirty.length > 0) {
-    console.error(`\n--strict: ${dirty.length} case(s) had a source line survive into the translation`)
+    console.error(`\n--strict: ${dirty.length} case(s) had a source line survive into the translation and be confirmed unreadable`)
     process.exit(1)
   }
 }

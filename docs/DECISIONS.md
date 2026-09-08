@@ -214,10 +214,12 @@ in this repository would have noticed either.
 **What it measures:** for every corpus case whose expected decision is
 `translate`, does each source line reappear — verbatim, or close enough that
 nothing was done to it — in the translated output. Deterministic string
-comparison, not a model judging a model: a judge model answers "is this
-translation good" with the same fluent confidence that produced the dropped
-line in the first place, which makes it a check that can be charmed by the
-exact failure it exists to catch.
+comparison finds the *candidates*; it is not, by itself, a verdict — see below
+for what turns a candidate into a finding. Either way this is not a model
+judging a model: a judge model answers "is this translation good" with the
+same fluent confidence that produced the dropped line in the first place,
+which makes it a check that can be charmed by the exact failure it exists to
+catch.
 
 **What it deliberately does NOT measure:** whether the translation reads
 naturally, whether idiom or tone survived, whether a correctly *translated*
@@ -226,36 +228,66 @@ job and this file skips any case that scored anything but `translate`. A
 "clean" result here says only that nothing was left behind, not that what
 arrived is good.
 
-**The hard part was telling "left behind" from "correctly untouched".** A
-reader who reads English and Spanish will legitimately see an English line —
+**A heuristic was tried first, and it made the tool worse than having none.**
+The hard part is telling "left behind" from "correctly untouched": a reader
+who reads English and Spanish will legitimately see an English line —
 `c-001`'s own `Hi all.` — survive a translation unchanged, and a check that
-only asked "does this source line appear in the output" would flag that
-greeting exactly as loudly as the German line that actually failed. The
-distinguishing rule: strip punctuation and check whether most of a line's
-words are closed-class function words (articles, pronouns, conjunctions, a
-handful of greetings) belonging to a language the reader reads. `Hi all.` is
-100% English function words; the failing line, `Sorry, aber wir sollten alle
-an board haben`, is mostly German function words with a couple of
-English-shaped tokens (`sorry`, `an`, `board` are real English words,
-deliberately excluded from the English list for exactly this reason) — nowhere
-near a majority. This is a heuristic, not language identification, and it is
-openly wrong in both directions: a short, mostly-loanword line that was
-genuinely never translated can read as "already readable" (a missed failure),
-and a legitimately-kept line with almost no function words — a product name on
-its own line — can read as "survived" when it is fine (noise in the report).
-That asymmetry is one more reason this reports rather than blocks.
+only asks "does this source line appear in the output" would flag that
+greeting exactly as loudly as the German line that actually failed. The first
+version of this file tried to draw that line by counting closed-class function
+words — articles, pronouns, conjunctions, a handful of greetings — and
+exempting a line once half its tokens matched a language the reader reads.
+`Hi all.` scored 100% and was correctly exempted. It did not generalise: real
+sentences run roughly 40-50% function words, so any line with three or four
+content words falls under a 50% bar regardless of what language it is in or
+whether the reader can read it. `Perfecto, nos vemos el viernes.` (pure
+Spanish, for a reader who reads Spanish) and `Can you review the deployment
+pipeline configuration?` (pure English, same reader) were both flagged as
+untranslated failures — ordinary sentences, correctly left alone, reported as
+the exact bug this file exists to catch. A report that cries wolf on ordinary
+input is a report nobody reads, the same argument
+`tools/agentic/mutation-floor.mjs` makes about a threshold nobody meets. It was
+deleted rather than tuned: no amount of adjusting the word lists or the
+threshold fixes an instrument measuring the wrong thing.
+
+**What replaced it: ask the translator about the surviving line, on its own.**
+For every candidate line `findSurvivedLines` turns up, `probeSurvivedLine`
+calls the same translator a second time, with just that line and the reader's
+`reads`. `silent` means the model judges the line readable by this reader — it
+was right to survive, not a failure. `translated` means the model judges it
+NOT readable — it should have been translated the first time and was not, and
+that is now attested by the same component this file already measured: 28/28
+on the development corpus, 26/26 held out (see above). `failed` means the
+probe itself broke, and is reported as its own bucket — never folded into
+"clean" by default, and never treated as either a pass or a confirmed failure.
+This is not a model grading a translation; it is the decision function this
+repository already trusts, applied a second time to a shorter piece of text.
+
+**The honest caveat that comes with it.** The 28/28 and 26/26 scores were
+earned on whole messages, with whatever context they carried. A probed line is
+asked about alone, stripped of its neighbours, so its accuracy here is
+assumed, not measured — and a line whose meaning depends on the sentences
+around it is exactly where this will be weakest. Nothing yet checks that
+assumption.
+
+**Cost, stated plainly.** This is one additional model call per line that
+survived the first pass, not per source line — `findSurvivedLines` already
+narrows the field, and `hasNothingToRead` narrows it again before that. It is
+still a second real request per surviving line, which is the honest reason
+this stays a nightly, by-hand, non-blocking run rather than something wired
+into every pull request.
 
 **Never run against a real model.** Every test in `quality.test.mjs` uses a
 fake translator and a stand-in for `hasNothingToRead` — no network, no API
 key. The tool imports the real `createTranslator` (`src/llm/decide.ts`) and the
 real `hasNothingToRead` (`src/core/ask.ts`) dynamically, reached only from
 `main()`, which nothing in this repository's test suite ever calls. What that
-means honestly: the line-survival logic is exercised, the wiring to the real
-translator and the real corpus is not, and neither is whether the heuristic
-above holds up on cases beyond the ones written into the test file. The first
-real run is still owed.
+means honestly: the line-survival and probe-classification logic are both
+exercised with fakes, the wiring to the real translator and the real corpus is
+not, and neither is whether a probed line's answer, out of context, agrees
+with what a human would say. The first real run is still owed.
 
-**Revisit when** it has run against a real model at least once, and again if
-the function-word lists prove too small or too English/Spanish-specific for a
-reader who reads a third language.
+**Revisit when** it has run against a real model at least once, and again if a
+probed line's missing context turns out to change its answer often enough to
+matter — the corpus does not yet have a case built to check that.
 

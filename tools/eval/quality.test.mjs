@@ -18,44 +18,45 @@
  * `translate` method, matching `src/core/translator.ts`'s port by shape, never
  * by import. Every `hasNothingToRead` below is a small stand-in good enough for
  * the lines these fixtures use — not a reimplementation offered as equivalent
- * to the real one, just enough to prove `findSurvivedLines` calls whatever it
- * is given at the right moments. The real functions are exercised only when
- * `quality.mjs` runs for real, which this suite never does.
+ * to the real one, just enough to prove `findSurvivedLines` and `runCase` call
+ * whatever they are given at the right moments. The real functions are
+ * exercised only when `quality.mjs` runs for real, which this suite never does.
+ *
+ * There used to be a fourth kind of fake here: a function-word heuristic,
+ * `isAlreadyReadable`, that tried to tell a correctly-kept line from a failed
+ * one by counting closed-class words. It is gone, along with its tests — it
+ * was wrong on ordinary sentences (see `docs/DECISIONS.md`) and nothing in
+ * this file argues for tuning it back in. What replaced it is a second call to
+ * the same translator fake this suite already builds, asking about one
+ * surviving line at a time — so the fakes below model exactly two calls a real
+ * run makes: one for the whole message, one per line that survived it.
  */
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { findSurvivedLines, isAlreadyReadable, runCase, similarity } from './quality.mjs'
+import { findSurvivedLines, probeSurvivedLine, runCase, similarity } from './quality.mjs'
 
 const READS = ['es', 'en']
 
 /** Good enough for these fixtures: emoji shortcodes and nothing else. */
 const stubHasNothingToRead = (line) => /^(?:\s*:[a-z0-9_+-]+:\s*)+$/i.test(line)
 
-test('isAlreadyReadable: "Hi all." is English function words the reader reads', () => {
-  assert.equal(isAlreadyReadable('Hi all.', READS), true)
-})
-
-test('isAlreadyReadable: the c-001 failure line is not majority-English or majority-Spanish', () => {
-  // `sorry`, `an` and `board` are real English words, and deliberately not
-  // enough on their own — this is the exact case the heuristic exists for.
-  assert.equal(isAlreadyReadable('Sorry, aber wir sollten alle an board haben', READS), false)
-})
-
-test('isAlreadyReadable: a clean Spanish line reads as readable for an es/en reader', () => {
-  assert.equal(isAlreadyReadable('Nos vemos todos el lunes por la mañana', READS), true)
-})
-
-test('isAlreadyReadable: an empty or punctuation-only line vouches for nothing', () => {
-  assert.equal(isAlreadyReadable('', READS), false)
-  assert.equal(isAlreadyReadable('...', READS), false)
-})
-
-test('isAlreadyReadable: a language with no word list cannot be vouched for', () => {
-  // No Portuguese list exists below FUNCTION_WORDS, so a reader who reads only
-  // Portuguese never has a line called "readable" by accident.
-  assert.equal(isAlreadyReadable('Bom dia a todos', ['pt']), false)
-})
+/**
+ * A fake translator: `src/core/translator.ts`'s `Translator` port, by shape
+ * only. `answers` is consumed one call at a time, in order — for `runCase`
+ * that means the first call is the whole-message translate, and every call
+ * after it is a probe of one surviving line — and the last answer repeats for
+ * any call beyond the list, so a test only needs to spell out what changes.
+ */
+const fakeTranslator = (answers) => {
+  let calls = 0
+  return {
+    async translate() {
+      const next = answers[calls++] ?? answers.at(-1)
+      return next
+    },
+  }
+}
 
 test('similarity: identical strings score 1', () => {
   assert.equal(similarity('same text', 'same text'), 1)
@@ -68,6 +69,16 @@ test('similarity: a stray space or fixed capitalisation still scores high', () =
 
 test('similarity: unrelated sentences score low', () => {
   assert.ok(similarity('leider konnte ich nicht alle', 'lo siento pero no pude reunir a todos') < 0.85)
+})
+
+test('findSurvivedLines: a line that reappears unchanged is a candidate, whatever language it is in', () => {
+  // No `isAlreadyReadable` filter left to exempt "Hi all." here — every
+  // verbatim survivor is now a candidate, and it is `probeSurvivedLine` (via
+  // `runCase`), never this function, that decides whether it was a failure.
+  const source = 'Hi all.\nLeider konnte ich nicht kommen.'
+  const translated = 'Hi all.\nLamentablemente no pude venir.'
+  const survived = findSurvivedLines({ source, translated, reads: READS, hasNothingToRead: stubHasNothingToRead })
+  assert.deepEqual(survived.map((s) => s.line), ['Hi all.'])
 })
 
 test('findSurvivedLines: the c-001 fixture — a German line surviving inside an otherwise Spanish translation', () => {
@@ -105,15 +116,9 @@ test('findSurvivedLines: the c-001 fixture — a German line surviving inside an
 
   const survived = findSurvivedLines({ source, translated, reads: READS, hasNothingToRead: stubHasNothingToRead })
 
-  assert.equal(survived.length, 1)
-  assert.equal(survived[0].line, 'Sorry, aber wir sollten alle an board haben')
-})
-
-test('findSurvivedLines: "Hi all." surviving is not reported — it is already readable', () => {
-  const source = 'Hi all.\nLeider konnte ich nicht kommen.'
-  const translated = 'Hi all.\nLamentablemente no pude venir.'
-  const survived = findSurvivedLines({ source, translated, reads: READS, hasNothingToRead: stubHasNothingToRead })
-  assert.deepEqual(survived, [])
+  // `Hi all.` came back as `Hola a todos.` here — genuinely translated, not a
+  // candidate. Only the untouched German line survived.
+  assert.deepEqual(survived.map((s) => s.line), ['Sorry, aber wir sollten alle an board haben'])
 })
 
 test('findSurvivedLines: an emoji-only line surviving is not reported — hasNothingToRead skips it', () => {
@@ -124,7 +129,7 @@ test('findSurvivedLines: an emoji-only line surviving is not reported — hasNot
 })
 
 test('findSurvivedLines: hasNothingToRead is consulted per line, not assumed', () => {
-  // A stub that calls everything "nothing to read" hides every failure —
+  // A stub that calls everything "nothing to read" hides every candidate —
   // proving this wires the given function in rather than a hard-coded rule.
   const source = 'Sorry, aber wir sollten alle an board haben'
   const translated = 'Sorry, aber wir sollten alle an board haben'
@@ -150,42 +155,145 @@ test('findSurvivedLines: a very short coincidental match is not worth reporting'
   assert.deepEqual(survived, [])
 })
 
-/** A fake translator: `src/core/translator.ts`'s `Translator` port, by shape only. */
-const fakeTranslator = (answers) => {
-  let calls = 0
-  return {
+test('probeSurvivedLine: the translator staying silent on the line means it was right to survive', async () => {
+  const translator = fakeTranslator([{ kind: 'silent' }])
+  const result = await probeSurvivedLine('Hi all.', translator, READS)
+  assert.deepEqual(result, { line: 'Hi all.', verdict: 'readable' })
+})
+
+test('probeSurvivedLine: the translator translating the line means it should not have survived', async () => {
+  const translator = fakeTranslator([
+    { kind: 'translated', translation: { text: 'Perdón, pero deberíamos tener a todos a bordo', foundLanguages: ['de'] } },
+  ])
+  const result = await probeSurvivedLine('Sorry, aber wir sollten alle an board haben', translator, READS)
+  assert.deepEqual(result, { line: 'Sorry, aber wir sollten alle an board haben', verdict: 'flagged' })
+})
+
+test('probeSurvivedLine: a failed probe is reported as its own thing, never silently readable', async () => {
+  const translator = fakeTranslator([{ kind: 'failed', detail: 'overloaded' }])
+  const result = await probeSurvivedLine('some line', translator, READS)
+  assert.deepEqual(result, { line: 'some line', verdict: 'unmeasured', detail: 'overloaded' })
+})
+
+test('runCase: c-001 — the German line survives and the probe says translated, so it is flagged', async () => {
+  const source = [
+    'Hi all.',
+    'Leider konnte ich nicht alle zu einem Zeitpunkt dazu holen.',
+    '',
+    ':smiling_face_with_tear::persevere:',
+    '',
+    'Sorry, aber wir sollten alle an board haben',
+  ].join('\n')
+  // `Hi all.` genuinely translated here, same as the real case in
+  // `fixtures/corpus/messages.json`'s c-001 — only the last line comes back
+  // untouched.
+  const translated = [
+    'Hola a todos.',
+    'Lamentablemente no pude reunir a todos a la vez.',
+    '',
+    ':smiling_face_with_tear::persevere:',
+    '',
+    'Sorry, aber wir sollten alle an board haben',
+  ].join('\n')
+
+  const translator = fakeTranslator([
+    // Call 1: the whole-message translate.
+    { kind: 'translated', translation: { text: translated, foundLanguages: ['de'] } },
+    // Call 2: probing the one line that survived — the German closing line.
+    // Asked about it on its own, the model would translate it, so this is
+    // the real failure: it should have come back translated the first time.
+    { kind: 'translated', translation: { text: 'Perdón, pero deberíamos tener a todos a bordo', foundLanguages: ['de'] } },
+  ])
+
+  const perRun = await runCase({ text: source }, translator, READS, 1, stubHasNothingToRead)
+
+  assert.equal(perRun.length, 1)
+  assert.equal(perRun[0].kind, 'translated')
+  assert.deepEqual(perRun[0].survived, [
+    { line: 'Sorry, aber wir sollten alle an board haben', verdict: 'flagged' },
+  ])
+})
+
+test('runCase: "Hi all." surviving a Spanish/English message is not flagged — the probe says silent', async () => {
+  const source = 'Hi all.\nLeider konnte ich nicht kommen.'
+  const translated = 'Hi all.\nLamentablemente no pude venir.'
+  const translator = fakeTranslator([
+    // Call 1: the whole-message translate — the German line translated, the
+    // English greeting left exactly as it arrived.
+    { kind: 'translated', translation: { text: translated, foundLanguages: ['de'] } },
+    // Call 2: probing the survived "Hi all." on its own — the reader reads
+    // English, so the model stays silent on it. It was right to survive.
+    { kind: 'silent' },
+  ])
+  const perRun = await runCase({ text: source }, translator, READS, 1, stubHasNothingToRead)
+  assert.equal(perRun[0].kind, 'translated')
+  assert.deepEqual(perRun[0].survived, [{ line: 'Hi all.', verdict: 'readable' }])
+})
+
+test('runCase: a pure Spanish sentence surviving is not flagged when the probe says silent', async () => {
+  // The old function-word heuristic flagged this outright: three content
+  // words is enough to sink a sentence under a 50% function-word bar, even
+  // though this is exactly the reader's own language. `Perfecto, nos vemos
+  // el viernes.` is `docs/DECISIONS.md`'s own example of that failure.
+  const line = 'Perfecto, nos vemos el viernes.'
+  const translator = fakeTranslator([
+    { kind: 'translated', translation: { text: line, foundLanguages: [] } },
+    { kind: 'silent' },
+  ])
+  const perRun = await runCase({ text: line }, translator, READS, 1, stubHasNothingToRead)
+  assert.equal(perRun[0].kind, 'translated')
+  assert.deepEqual(perRun[0].survived, [{ line, verdict: 'readable' }])
+})
+
+test('runCase: a pure English sentence surviving is not flagged when the probe says silent', async () => {
+  // The other sentence the old heuristic got wrong, for the same reason: a
+  // technical sentence has few function words no matter how readable it is.
+  const line = 'Can you review the deployment pipeline configuration?'
+  const translator = fakeTranslator([
+    { kind: 'translated', translation: { text: line, foundLanguages: [] } },
+    { kind: 'silent' },
+  ])
+  const perRun = await runCase({ text: line }, translator, READS, 1, stubHasNothingToRead)
+  assert.equal(perRun[0].kind, 'translated')
+  assert.deepEqual(perRun[0].survived, [{ line, verdict: 'readable' }])
+})
+
+test('runCase: a probe that fails is bucketed as unmeasured, never counted as clean by silently disappearing', async () => {
+  const line = 'Sorry, aber wir sollten alle an board haben'
+  const translator = fakeTranslator([
+    { kind: 'translated', translation: { text: line, foundLanguages: ['de'] } },
+    { kind: 'failed', detail: 'overloaded' },
+  ])
+  const perRun = await runCase({ text: line }, translator, READS, 1, stubHasNothingToRead)
+  assert.equal(perRun[0].kind, 'translated')
+  assert.deepEqual(perRun[0].survived, [{ line, verdict: 'unmeasured', detail: 'overloaded' }])
+  // Not "flagged", and not silently absent either — it is its own verdict,
+  // distinguishable from both a clean pass and a confirmed failure.
+  assert.notEqual(perRun[0].survived[0].verdict, 'flagged')
+  assert.notEqual(perRun[0].survived[0].verdict, 'readable')
+})
+
+test('runCase: no probe call is made for a line hasNothingToRead already rejects', async () => {
+  const source = 'Leider konnte ich nicht kommen.\n:smiling_face_with_tear::persevere:'
+  const translated = 'Lamentablemente no pude venir.\n:smiling_face_with_tear::persevere:'
+  let translateCalls = 0
+  const translator = {
     async translate() {
-      const next = answers[calls++] ?? answers.at(-1)
-      return next
+      translateCalls++
+      // First call is the whole-message translate; anything past that would
+      // be a probe. There is exactly one candidate line here — the emoji
+      // line is rejected by hasNothingToRead before it ever reaches a probe —
+      // and that line is a clean match, so no probe is needed for it either.
+      return { kind: 'translated', translation: { text: translated, foundLanguages: ['de'] } }
     },
   }
-}
-
-test('runCase: clean when every run comes back with nothing survived', async () => {
-  const translator = fakeTranslator([
-    { kind: 'translated', translation: { text: 'Nos vemos la próxima semana.', foundLanguages: ['de'] } },
-  ])
-  const perRun = await runCase({ text: 'Wir sehen uns nächste Woche.' }, translator, READS, 3, stubHasNothingToRead)
-  assert.equal(perRun.length, 3)
-  assert.ok(perRun.every((r) => r.kind === 'translated' && r.survived.length === 0))
-})
-
-test('runCase: a survived line shows up in the per-run report', async () => {
-  const translator = fakeTranslator([
-    { kind: 'translated', translation: { text: 'Sorry, aber wir sollten alle an board haben', foundLanguages: [] } },
-  ])
-  const perRun = await runCase(
-    { text: 'Sorry, aber wir sollten alle an board haben' },
-    translator,
-    READS,
-    1,
-    stubHasNothingToRead,
-  )
+  const perRun = await runCase({ text: source }, translator, READS, 1, stubHasNothingToRead)
+  assert.equal(translateCalls, 1) // only the whole-message call — nothing survived to probe
   assert.equal(perRun[0].kind, 'translated')
-  assert.equal(perRun[0].survived.length, 1)
+  assert.deepEqual(perRun[0].survived, [])
 })
 
-test('runCase: silent and failed runs are bucketed by kind, never counted as clean', () => {
+test('runCase: silent and failed top-level runs are bucketed by kind, never counted as clean', () => {
   const translator = fakeTranslator([{ kind: 'silent' }, { kind: 'failed', detail: 'overloaded' }])
   return runCase({ text: 'x' }, translator, READS, 2, stubHasNothingToRead).then((perRun) => {
     assert.deepEqual(perRun, [{ kind: 'silent', detail: undefined }, { kind: 'failed', detail: 'overloaded' }])

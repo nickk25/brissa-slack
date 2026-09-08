@@ -47,7 +47,7 @@ problem and it was invisible before.
 | Layer | Measures | When |
 | --- | --- | --- |
 | Decision | Is there a sentence the reader cannot read? Deterministic, answers written by hand. `tools/eval/calibrate.mjs`. | Every pull request. Blocks. |
-| Quality | Did every sentence that needed translating actually get translated — not whether it reads well. Deterministic completeness check (a source line surviving verbatim, or close to it, into the output), never a model judging a model. `tools/eval/quality.mjs`, run by hand or in CI as `npm run eval:quality`. | On demand for now — no scheduled job wired in yet. Reports; `--strict` exists for a human who wants a nonzero exit, never for a gate. |
+| Quality | Did every sentence that needed translating actually get translated — not whether it reads well. A source line surviving verbatim, or close to it, into the output is found deterministically; each surviving candidate is then asked about on its own, through the same decision function `calibrate.mjs` already scored, so a "left behind" verdict is attested by the one component in this repository with a measured score. Never a quality judge grading fluency. `tools/eval/quality.mjs`, run by hand or in CI as `npm run eval:quality`. | On demand for now — no scheduled job wired in yet. Reports; `--strict` exists for a human who wants a nonzero exit, never for a gate. |
 
 Quality is deliberately narrower than its name might suggest. It does not score
 fluency, tone, idiom, or whether a correctly translated sentence is simply
@@ -55,8 +55,17 @@ wrong — those need a reader, or a judge model, and belong in a tool honestly
 labelled as such. It exists because the decision layer scored a real case a
 pass the day production returned four translated lines and a fifth, untouched,
 in the language the reader does not read — see `docs/DECISIONS.md`. Nobody
-noticed until a human read a screenshot; deterministic string comparison is
-supposed to notice next time.
+noticed until a human read a screenshot; this layer is supposed to notice next
+time.
+
+A first attempt tried to tell "correctly left alone" from "left behind" by
+counting function words, and it was wrong on ordinary sentences often enough
+to make the report worthless — see `docs/DECISIONS.md` for the two sentences
+that killed it. Asking the decision function about the surviving line costs one
+extra model call per line that survived, which is why this stays a nightly,
+by-hand check rather than something run on every pull request; it is also
+scored on a single line out of context, which the decision layer's own 28/28
+and 26/26 never were, so treat a flagged line as a strong lead, not a proof.
 
 A snapshot of a model's output is not a test. The first time it fails, the
 cheapest response is to re-record it, and the corpus then means "whatever the
