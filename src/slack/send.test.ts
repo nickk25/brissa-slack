@@ -17,7 +17,7 @@ const request: EphemeralRequest = {
 }
 
 test('INV-slack-10 a delivered ephemeral says so', async () => {
-  assert.deepEqual(await sendEphemeral(api({ ok: true }), request), { delivered: true })
+  assert.deepEqual(await sendEphemeral(api({ ok: true }), request), { accepted: true })
 })
 
 test('INV-slack-11 a reader who was not in the channel is its own outcome, not a failure', async () => {
@@ -25,15 +25,15 @@ test('INV-slack-11 a reader who was not in the channel is its own outcome, not a
   // this is the expected answer for anything that arrived overnight — and the
   // reason a private shortcut is not optional.
   const out = await sendEphemeral(api({ ok: false, error: 'user_not_in_channel' }), request)
-  assert.equal(out.delivered, false)
-  assert.ok(!out.delivered && out.because === 'reader-not-in-channel')
+  assert.equal(out.accepted, false)
+  assert.ok(!out.accepted && out.because === 'reader-not-in-channel')
 })
 
 test('INV-slack-12 a real refusal is not mistaken for absence', async () => {
   // A missing scope and a reader who stepped out look identical if both are
   // treated as "not delivered". Only one of them is somebody's job to fix.
   const out = await sendEphemeral(api({ ok: false, error: 'missing_scope' }), request)
-  assert.ok(!out.delivered && out.because === 'declined' && out.detail === 'missing_scope')
+  assert.ok(!out.accepted && out.because === 'declined' && out.detail === 'missing_scope')
 })
 
 test('INV-slack-13 a failure never reports as delivered', async () => {
@@ -41,8 +41,8 @@ test('INV-slack-13 a failure never reports as delivered', async () => {
   // reader, from one Brissa decided not to make.
   for (const error of ['user_not_in_channel', 'missing_scope', 'invalid_blocks', undefined]) {
     const out = await sendEphemeral(api({ ok: false, ...(error ? { error } : {}) }), request)
-    assert.equal(out.delivered, false, `${error} must not read as delivered`)
-    assert.ok(!out.delivered && out.detail.length > 0, 'and must say what happened')
+    assert.equal(out.accepted, false, `${error} must not read as delivered`)
+    assert.ok(!out.accepted && out.detail.length > 0, 'and must say what happened')
   }
 })
 

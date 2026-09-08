@@ -41,9 +41,13 @@ export type ReaderOutcome = { readonly userId: string } & (
   | { readonly kind: 'skipped'; readonly because: SkipReason }
   | { readonly kind: 'silent' }
   | { readonly kind: 'failed'; readonly stage: 'translate' | 'send'; readonly detail: string }
-  | { readonly kind: 'delivered' }
+  /**
+   * Slack accepted it. Whether the reader saw it, Slack does not say — see the
+   * quotation in `src/slack/send.ts`. Named for what is known.
+   */
+  | { readonly kind: 'sent' }
   | {
-      readonly kind: 'not-delivered'
+      readonly kind: 'not-sent'
       readonly because: 'reader-not-in-channel' | 'declined'
       readonly detail: string
     }
@@ -131,9 +135,9 @@ async function serveGroup(
       try {
         const sent = await sendEphemeral(ports.slack, ephemeralFor(message, r.userId, blocks, result.translation.text))
         record(
-          sent.delivered
-            ? { userId: r.userId, kind: 'delivered' }
-            : { userId: r.userId, kind: 'not-delivered', because: sent.because, detail: sent.detail },
+          sent.accepted
+            ? { userId: r.userId, kind: 'sent' }
+            : { userId: r.userId, kind: 'not-sent', because: sent.because, detail: sent.detail },
         )
       } catch (err) {
         record({ userId: r.userId, kind: 'failed', stage: 'send', detail: detail(err) })

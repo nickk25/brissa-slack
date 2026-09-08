@@ -54,15 +54,30 @@ Slack has exactly one way to show a message to a single person in a channel:
 `chat.postEphemeral`. It carries a constraint worth stating plainly, because the
 product is built around it rather than despite it:
 
-**Slack only delivers an ephemeral message if the reader is currently in the
-channel.** Someone opening Slack to forty overnight messages receives none of
-them.
+Two limitations, both quoted from Slack rather than inferred.
 
-So `reader-not-in-channel` is an outcome, not a failure — the expected answer for
-anything that arrived while nobody was looking. It is also why a private shortcut
-on the message menu is not a nice-to-have: this path covers what arrives while
-the reader is present, the shortcut covers the rest, and neither is sufficient
-alone.
+> "Ephemeral message delivery is not guaranteed — the user must be currently
+> active in Slack and a member of the specified `channel`."
+
+Not merely a member: **active**. Someone opening Slack to forty overnight
+messages receives none of them, and Slack answers `ok: true` for every one.
+
+> "Make sure your app is a member of the conversation it's attempting to post a
+> message to."
+
+So this path cannot exist without Brissa visibly joining the channel — which in
+a channel shared with a client announces that you do not understand them.
+
+**Nothing here returns `delivered`, and that is the correction.** The outcome is
+`accepted`: Slack took the message. Whether anybody saw it, Slack does not
+report, and this module used to call that success. Naming the most common
+failure in the product after a success is how it stayed invisible.
+
+`reader-not-in-channel` remains a distinct outcome rather than a failure — the
+expected answer for a reader who is not a member. Between the two quotations
+above, the message-menu shortcut is not a nice-to-have but the better half of the
+product: it needs no membership, and the reader is by definition looking at Slack
+at the moment they ask.
 
 A real refusal — a missing scope, a bad token, malformed blocks — is a different
 outcome with a different owner, and collapsing the two would hide a bug behind an
@@ -83,12 +98,12 @@ genuinely different values.
 
 ## Invariants of sending
 
-- A delivered ephemeral says so. `test: INV-slack-10`
+- An accepted ephemeral says only that it was accepted. `test: INV-slack-10`
 - A reader who was not in the channel is its own outcome, not a failure.
   `test: INV-slack-11`
 - A real refusal is not mistaken for absence; only one of the two is somebody's
   job to fix. `test: INV-slack-12`
-- A failure never reports as delivered. A translation that silently failed to
+- A failure never reports as accepted. A translation that silently failed to
   appear is indistinguishable, to the reader, from one Brissa chose not to make.
   `test: INV-slack-13`
 - The fallback text is one line and fits a notification; without it the push

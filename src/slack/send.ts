@@ -2,14 +2,22 @@
  * Putting a translation in front of one reader, and nobody else.
  *
  * Slack has exactly one way to show a message to a single person in a channel:
- * `chat.postEphemeral`. It carries a limitation that shapes the whole product,
- * so it is stated here rather than discovered later — **Slack only delivers an
- * ephemeral message if the reader is currently in the channel.** Someone opening
- * Slack to forty overnight messages gets none of them.
+ * `chat.postEphemeral`. It carries two limitations that shape the whole product,
+ * both quoted from Slack's own documentation rather than inferred.
  *
- * That is why a private shortcut on the message menu is not a nice-to-have. This
- * path covers what arrives while the reader is present; the shortcut covers the
- * rest, and neither is sufficient alone.
+ * **"Ephemeral message delivery is not guaranteed — the user must be currently
+ * active in Slack and a member of the specified channel."** Not merely a member:
+ * *active*. Someone opening Slack to forty overnight messages receives none of
+ * them, and Slack answers `ok: true` for every one.
+ *
+ * **"Make sure your app is a member of the conversation it's attempting to post
+ * a message to."** So this path cannot exist without Brissa visibly joining the
+ * channel — which in a channel shared with a client announces that you do not
+ * understand them.
+ *
+ * Between them, those two sentences are why the message-menu shortcut is not a
+ * nice-to-have but the better half of the product: it needs no membership, and
+ * the reader is by definition looking at Slack at the moment they ask.
  */
 
 import type { InboundMessage } from '../core/ports.ts'
@@ -32,9 +40,26 @@ export interface SlackApi {
   postEphemeral(request: EphemeralRequest): Promise<{ readonly ok: boolean; readonly error?: string }>
 }
 
+/**
+ * `accepted`, not `delivered`, and the difference is the whole point.
+ *
+ * Slack's own words on `chat.postEphemeral`:
+ *
+ *   "Ephemeral message delivery is not guaranteed — the user must be currently
+ *    active in Slack and a member of the specified channel."
+ *
+ * So a `200 ok` means Slack took the message, and nothing more. A reader who was
+ * a member of the channel but not looking at Slack gets `ok: true` and never
+ * sees a thing — no error, no retry, no trace. This type used to call that
+ * `delivered`, which made the most common failure in the product invisible by
+ * naming it a success.
+ *
+ * Nothing here can close that gap: Slack does not report it. What this can do is
+ * refuse to claim more than it knows.
+ */
 export type SendOutcome =
-  | { readonly delivered: true }
-  | { readonly delivered: false; readonly because: 'reader-not-in-channel' | 'declined'; readonly detail: string }
+  | { readonly accepted: true }
+  | { readonly accepted: false; readonly because: 'reader-not-in-channel' | 'declined'; readonly detail: string }
 
 /**
  * Slack's way of saying the reader was not there to see it.
@@ -52,18 +77,18 @@ const NOT_PRESENT = new Set(['user_not_in_channel', 'channel_not_found', 'user_n
 export async function sendEphemeral(api: SlackApi, request: EphemeralRequest): Promise<SendOutcome> {
   const response = await api.postEphemeral(request)
 
-  if (response.ok) return { delivered: true }
+  if (response.ok) return { accepted: true }
 
   const error = response.error ?? 'unknown'
   if (NOT_PRESENT.has(error)) {
-    return { delivered: false, because: 'reader-not-in-channel', detail: error }
+    return { accepted: false, because: 'reader-not-in-channel', detail: error }
   }
 
   // Anything else is a real refusal — a bad token, a missing scope, a malformed
   // block. Returned rather than thrown, and never swallowed: a translation that
   // silently failed to appear is indistinguishable, to the reader, from a
   // message Brissa decided not to translate.
-  return { delivered: false, because: 'declined', detail: error }
+  return { accepted: false, because: 'declined', detail: error }
 }
 
 /**

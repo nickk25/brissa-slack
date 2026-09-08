@@ -132,3 +132,35 @@ per-file ratchet in `tools/agentic/mutation-floor.mjs` stays empty, which is its
 goal state. Pinning `decide.ts` at 59.09 would have been the other option, and it
 would have recorded the weakest thing in the repository as acceptable.
 
+## An ephemeral is not delivered, only accepted
+
+`SendOutcome` said `delivered` for four days. Slack's own documentation says:
+
+> "Ephemeral message delivery is not guaranteed — the user must be currently
+> active in Slack and a member of the specified `channel`."
+
+Not a member — **active**. A reader who belongs to the channel but does not
+happen to be looking at Slack gets nothing, and the API answers `ok: true`. So
+the single most common way this product fails a reader was being counted as a
+success, by name, in the type system.
+
+Renamed to `accepted`, which is all Slack reports. Nothing closes the gap itself;
+what the code can do is refuse to claim more than it knows.
+
+The same page carries the other half:
+
+> "Make sure your app is a member of the conversation it's attempting to post a
+> message to."
+
+Membership is not an implementation choice, it is a requirement of the method —
+which means the automatic path cannot exist without Brissa visibly joining a
+channel. In a channel shared with a client, joining announces that you do not
+understand them.
+
+Together these two sentences reverse which half of the product is the important
+one. The message-menu shortcut needs no membership, and the reader is by
+definition looking at Slack at the moment they invoke it. It was on the list as
+"covers what arrives while you are away". It is the half that works.
+
+**Source:** `https://docs.slack.dev/reference/methods/chat.postEphemeral`
+

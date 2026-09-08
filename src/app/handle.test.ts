@@ -102,8 +102,8 @@ test('INV-app-01 one message reaches every reader who needed it, and nobody else
   assert.deepEqual(outcome, {
     kind: 'considered',
     readers: [
-      { userId: 'U-nick', kind: 'delivered' },
-      { userId: 'U-ana', kind: 'delivered' },
+      { userId: 'U-nick', kind: 'sent' },
+      { userId: 'U-ana', kind: 'sent' },
       { userId: 'U-bo', kind: 'silent' },
     ],
   })
@@ -166,7 +166,7 @@ test('INV-app-05 a translation failure is visible, attributed, and confined to i
     readers: [
       { userId: 'U-nick', kind: 'failed', stage: 'translate', detail: 'overloaded' },
       { userId: 'U-ana', kind: 'failed', stage: 'translate', detail: 'overloaded' },
-      { userId: 'U-bo', kind: 'delivered' },
+      { userId: 'U-bo', kind: 'sent' },
     ],
   })
 })
@@ -200,8 +200,8 @@ test('INV-app-07 a reader who was not there is not a failure, and a refusal is n
   assert.deepEqual(outcome, {
     kind: 'considered',
     readers: [
-      { userId: 'U-nick', kind: 'not-delivered', because: 'declined', detail: 'missing_scope' },
-      { userId: 'U-ana', kind: 'not-delivered', because: 'reader-not-in-channel', detail: 'user_not_in_channel' },
+      { userId: 'U-nick', kind: 'not-sent', because: 'declined', detail: 'missing_scope' },
+      { userId: 'U-ana', kind: 'not-sent', because: 'reader-not-in-channel', detail: 'user_not_in_channel' },
     ],
   })
 })
@@ -256,7 +256,7 @@ test('INV-app-10 the author is dropped before grouping, not after', async () => 
     kind: 'considered',
     readers: [
       { userId: 'U-jens', kind: 'skipped', because: 'own-message' },
-      { userId: 'U-nick', kind: 'delivered' },
+      { userId: 'U-nick', kind: 'sent' },
     ],
   })
 })
@@ -431,7 +431,7 @@ test('INV-app-19 the real adapters compose: a Slack event becomes an ephemeral w
   ])
   assert.deepEqual(outcome, {
     kind: 'considered',
-    readers: [{ userId: 'U-nick', kind: 'delivered' }],
+    readers: [{ userId: 'U-nick', kind: 'sent' }],
   })
 })
 
@@ -473,9 +473,9 @@ test('INV-app-21 two groups that both need translating each get their own, in th
   assert.deepEqual(outcome, {
     kind: 'considered',
     readers: [
-      { userId: 'U-nick', kind: 'delivered' },
-      { userId: 'U-ana', kind: 'delivered' },
-      { userId: 'U-bo', kind: 'delivered' },
+      { userId: 'U-nick', kind: 'sent' },
+      { userId: 'U-ana', kind: 'sent' },
+      { userId: 'U-bo', kind: 'sent' },
     ],
   })
 })
@@ -498,9 +498,9 @@ test('INV-app-22 one reader’s send failing does not take down the others in th
   assert.deepEqual(outcome, {
     kind: 'considered',
     readers: [
-      { userId: 'U-nick', kind: 'delivered' },
+      { userId: 'U-nick', kind: 'sent' },
       { userId: 'U-ana', kind: 'failed', stage: 'send', detail: 'ETIMEDOUT' },
-      { userId: 'U-bo', kind: 'delivered' },
+      { userId: 'U-bo', kind: 'sent' },
     ],
   })
 })
