@@ -1,0 +1,352 @@
+#!/usr/bin/env node
+/**
+ * Phase 01: did the translation actually say everything, or just decide to?
+ *
+ * `calibrate.mjs` scores the DECISION — translate or stay silent — against an
+ * answer a person wrote by hand. It is deliberately blind to what comes back
+ * once the model says yes; its own header says so. That blindness cost
+ * something real: on `c-001`, the corpus's own canonical case, production made
+ * the right decision and then returned five German lines with the fifth,
+ * `Sorry, aber wir sollten alle an board haben`, untouched — sitting in German
+ * inside an otherwise Spanish translation. The decision eval scored that case a
+ * pass. Nothing measured the failure; a human noticed it in a screenshot. This
+ * file exists so the next one like it is caught here instead of there.
+ *
+ * The primary signal is deterministic on purpose, not a model judging a model:
+ * a model asked "is this translation any good" answers with the same fluent
+ * confidence that produced the untranslated line in the first place, and a
+ * judge that can be charmed by fluency is not a check on fluency. What actually
+ * happened has a precise, checkable signature instead — a line of the source
+ * survived into the output essentially unchanged — and that is exactly what
+ * gets measured here: per source line, does it reappear in the translation,
+ * verbatim or close enough to it that nothing was done to it.
+ *
+ * What this deliberately does NOT measure, and never claims to: whether the
+ * translation reads naturally, whether idiom or tone survived, whether a
+ * correctly *translated* line is simply wrong. Those need a reader, or a judge
+ * model, and either belongs in a tool honestly labelled as such — not this one.
+ * This answers a narrower question, "did the words make it across at all", and
+ * that narrower question is exactly the one that went unmeasured and cost a
+ * reader a sentence they could not read.
+ *
+ * Reports, does not block — same split the corpus README's two-layer table
+ * describes: this is not deterministic enough, case to case, to gate a pull
+ * request the way the decision layer does, and treating a noisy score as a
+ * gate would turn "the model phrased something a little oddly" into a false
+ * red as often as it turns "the model dropped a sentence" into a false green.
+ * `--strict` exists for a human choosing to run it that way — never for CI.
+ *
+ *   node --experimental-strip-types tools/eval/quality.mjs
+ *   node --experimental-strip-types tools/eval/quality.mjs --model claude-opus-5
+ *   node --experimental-strip-types tools/eval/quality.mjs --corpus held-out --runs 5
+ *   node --experimental-strip-types tools/eval/quality.mjs --strict
+ *
+ * Same methodology `calibrate.mjs` already established, because a second eval
+ * inventing its own conventions is a second thing to learn: several runs per
+ * case, because a single run is not a measurement; the prompt's hash carried
+ * in the output, so a score can never be mistaken for one that scored a prompt
+ * which has since changed; `--model` and `--corpus` to point it elsewhere.
+ *
+ * `createTranslator` is imported from `src/llm/decide.ts`, never reimplemented
+ * — the whole point is to measure what production actually runs, not a
+ * hand-rolled stand-in that could quietly drift from the real prompt or the
+ * real request shape. That import is dynamic and lives only inside `main()`,
+ * reached only when this file is invoked directly (see the guard at the very
+ * bottom): importing a TypeScript module any other way would mean loading this
+ * file at all — including just to read its exported functions — requires a
+ * TypeScript compiler in the loop, which is exactly the dependency
+ * `quality.test.mjs` is written to avoid. Same reasoning for
+ * `src/core/ask.ts`'s `hasNothingToRead`, reused rather than re-stripped.
+ */
+
+import { createHash } from 'node:crypto'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const ROOT = process.cwd()
+const CORPUS_DIR = join(ROOT, 'fixtures/corpus')
+const PROMPT = join(ROOT, 'src/llm/prompts/decide.md')
+
+const arg = (name, fallback) => {
+  const i = process.argv.indexOf(`--${name}`)
+  return i === -1 ? fallback : process.argv[i + 1]
+}
+const flag = (name) => process.argv.includes(`--${name}`)
+
+/* ---------------------------------------------------------------------------
+ * Verbatim, or close enough to it that the model plainly did not touch the
+ * line — a normalised Levenshtein ratio rather than exact string equality, so
+ * a translator that only reflows whitespace or fixes a stray space doesn't get
+ * credit for "translating" a line it left untouched in every way that matters.
+ * ------------------------------------------------------------------------ */
+function normalise(line) {
+  return line.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function levenshtein(a, b) {
+  if (a === b) return 0
+  const m = a.length
+  const n = b.length
+  if (m === 0) return n
+  if (n === 0) return m
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const row = [i]
+    for (let j = 1; j <= n; j++) {
+      row[j] = a[i - 1] === b[j - 1] ? prev[j - 1] : 1 + Math.min(prev[j - 1], prev[j], row[j - 1])
+    }
+    prev = row
+  }
+  return prev[n]
+}
+
+/** 1 for identical strings, 0 for maximally different ones of that length. */
+export function similarity(a, b) {
+  const longest = Math.max(a.length, b.length)
+  if (longest === 0) return 1
+  return 1 - levenshtein(a, b) / longest
+}
+
+/** Below this, a match is coincidence rather than evidence a line survived. */
+const SIMILARITY_THRESHOLD = 0.85
+
+/** Shorter than this (normalised), a match is far too cheap to mean anything. */
+const MIN_LINE_LENGTH = 3
+
+/**
+ * The lines of `source` that reappear, essentially unchanged, in `translated`.
+ *
+ * This is a candidate list, not a verdict. A line lands here whenever it
+ * survived the trip byte-for-byte-ish, and that alone cannot say whether
+ * surviving was correct — `c-001`'s `Hi all.` and its `Sorry, aber wir
+ * sollten alle an board haben` both survive, and only one of them is a bug.
+ * Telling those apart used to be this file's job, done with a count of
+ * closed-class function words; it was wrong on ordinary sentences (see
+ * `docs/DECISIONS.md` for the case that killed it) and has been deleted
+ * rather than tuned. What decides a candidate now is `probeSurvivedLine`,
+ * below — every candidate this returns gets asked about, one at a time.
+ *
+ * `hasNothingToRead` is a required parameter rather than an import: this
+ * module has no static dependency on any TypeScript file (see the file
+ * header), so the real one — `src/core/ask.ts` — is handed in by the caller.
+ * `main()` hands in the genuine function; `quality.test.mjs` hands in a small
+ * stand-in, which keeps this file, and its tests, loadable without a
+ * TypeScript compiler in the loop.
+ */
+export function findSurvivedLines({ source, translated, reads, hasNothingToRead }) {
+  const translatedLines = translated.split('\n').map(normalise)
+  const survived = []
+  for (const raw of source.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    if (hasNothingToRead(line)) continue // emoji-only, code, a bare url, an @mention: nothing to translate
+    const normalised = normalise(line)
+    if (normalised.length < MIN_LINE_LENGTH) continue
+    const match = translatedLines.find((t) => similarity(normalised, t) >= SIMILARITY_THRESHOLD)
+    if (match !== undefined) survived.push({ line, matchedAgainst: match })
+  }
+  return survived
+}
+
+/* ---------------------------------------------------------------------------
+ * Asking about a survived line, instead of guessing about it.
+ *
+ * The heuristic this replaces tried to tell "correctly left alone" from
+ * "should have been translated" by counting function words — articles,
+ * pronouns, a handful of greetings — and calling a line readable once half
+ * its tokens matched. It read as principled and was wrong on plain sentences:
+ * natural text runs roughly 40-50% function words, so anything with three or
+ * four content words already falls under the bar. `Perfecto, nos vemos el
+ * viernes.` (pure Spanish, for a reader who reads Spanish) and `Can you
+ * review the deployment pipeline configuration?` (pure English, same reader)
+ * both got flagged as untranslated failures under the old rule. A tool that
+ * cries wolf on ordinary input is a tool nobody reads —
+ * `tools/agentic/mutation-floor.mjs` makes this exact argument about a
+ * threshold nobody meets. The fix is not a better threshold; it is not asking
+ * a word-counter at all.
+ *
+ * What this asks instead is the one component in this repository with a
+ * measured score: the decision itself. `createTranslator`'s prompt already
+ * answers, for a piece of text and a reader's `reads`, whether that reader
+ * needs it translated — that is exactly the question a survived line raises,
+ * asked about the line on its own rather than about the whole message it came
+ * from. `docs/DECISIONS.md` records that decision at 28/28 on the development
+ * corpus and 26/26 held out. This is that same function, called a second
+ * time, on a shorter piece of text:
+ *
+ *   - `silent`     the model judges this line readable by this reader. It was
+ *                   right to leave it alone — not a failure.
+ *   - `translated` the model judges this line NOT readable. It should have
+ *                   come back translated in the first pass and did not. THAT
+ *                   is the failure this file exists to catch.
+ *   - `failed`     the probe itself broke (network, overload, a malformed
+ *                   response). Neither a pass nor a failure — reported as its
+ *                   own thing, in its own bucket, never folded into "clean"
+ *                   by default.
+ *
+ * HONESTY, stated plainly rather than left to be discovered: this is not a
+ * model grading a translation, but it is also not the same measurement
+ * `docs/DECISIONS.md` scored. That score was earned on whole messages, with
+ * whatever surrounding context they carried; here the same prompt sees one
+ * line, alone, stripped of the sentences before and after it. Its accuracy on
+ * a single line out of context is assumed, not measured, and a line whose
+ * meaning depends on its neighbours — a fragment, a reply that only makes
+ * sense next to the message above it — is exactly where this will be
+ * weakest. Nothing here checks that assumption; a human reading the flagged
+ * lines still does the final call, the same way `docs/DECISIONS.md` says the
+ * decision layer's own score should be revisited once quality is measured.
+ *
+ * COST: one extra model call per line that survived the first pass — not per
+ * source line, `findSurvivedLines` already narrows that down, but a second
+ * real request all the same. That is the honest reason this is a nightly, by
+ * hand, non-blocking run and not a check wired into every pull request.
+ */
+export async function probeSurvivedLine(line, translator, reads) {
+  const result = await translator.translate({ text: line, reads })
+  if (result.kind === 'silent') return { line, verdict: 'readable' }
+  if (result.kind === 'translated') return { line, verdict: 'flagged' }
+  return { line, verdict: 'unmeasured', detail: result.detail }
+}
+
+/**
+ * One case, asked `runs` times.
+ *
+ * `translator` is anything shaped like `src/core/translator.ts`'s `Translator`
+ * port — `{ translate(request): Promise<TranslationResult> }` — never imported
+ * as a type here, only relied on structurally, so a fake object satisfies it
+ * with no TypeScript in sight. `main()` hands in the real one; the tests hand
+ * in whatever a fixture needs. The same translator answers both questions
+ * this file asks: "translate this message" for the run itself, and
+ * "translate this one surviving line" for each candidate it produced —
+ * one component, asked twice, never two different mechanisms pretending to
+ * agree.
+ *
+ * A run that comes back `silent` or `failed` at the top level is not this
+ * tool's problem to report: `calibrate.mjs` already measures whether the
+ * *decision* was right, and a case in this corpus scored `expected:
+ * "translate"` landing here as anything but `translated` is a decision
+ * regression, not a quality one. Counting it as "clean" would hide it, so it
+ * is kept, bucketed by kind, and left out of `measured` rather than silently
+ * improving the score.
+ */
+export async function runCase(c, translator, reads, runs, hasNothingToRead) {
+  const perRun = []
+  for (let i = 0; i < runs; i++) {
+    const result = await translator.translate({ text: c.text, reads })
+    if (result.kind !== 'translated') {
+      perRun.push({ kind: result.kind, detail: result.kind === 'failed' ? result.detail : undefined })
+      continue
+    }
+    const candidates = findSurvivedLines({ source: c.text, translated: result.translation.text, reads, hasNothingToRead })
+    const survived = []
+    for (const candidate of candidates) {
+      survived.push(await probeSurvivedLine(candidate.line, translator, reads))
+    }
+    perRun.push({ kind: 'translated', survived })
+  }
+  return perRun
+}
+
+/* ---------------------------------------------------------------------------
+ * Running it for real — everything below this line reaches for the
+ * TypeScript modules this tool depends on, and none of it runs unless this
+ * file is invoked directly (see the guard at the bottom).
+ * ------------------------------------------------------------------------ */
+
+async function main() {
+  const model = arg('model', 'claude-sonnet-5')
+  // Which set. Same rule as `calibrate.mjs`: `messages` may be tuned against;
+  // `held-out` may be run but never read case-by-case to change anything.
+  const corpusName = arg('corpus', 'messages')
+  const runs = Number(arg('runs', '3'))
+  const strict = flag('strict')
+  const out = arg('out', `fixtures/evals/quality-${corpusName === 'messages' ? model : `${corpusName}-${model}`}.json`)
+
+  const corpus = JSON.parse(readFileSync(join(CORPUS_DIR, `${corpusName}.json`), 'utf8'))
+  const promptRaw = readFileSync(PROMPT, 'utf8')
+  const promptHash = createHash('sha256').update(promptRaw).digest('hex').slice(0, 12)
+
+  const { createTranslator } = await import(join(ROOT, 'src/llm/decide.ts'))
+  const { hasNothingToRead } = await import(join(ROOT, 'src/core/ask.ts'))
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
+
+  const client = new Anthropic()
+  const translator = createTranslator(client.messages, { model, promptPath: PROMPT })
+
+  // Only cases the corpus itself says should have been translated — there is
+  // no output to check the completeness of otherwise.
+  const cases = corpus.cases.filter((c) => c.expected === 'translate')
+  const results = []
+
+  for (const c of cases) {
+    const perRun = await runCase(c, translator, corpus.reads, runs, hasNothingToRead)
+    const measured = perRun.filter((r) => r.kind === 'translated')
+    // Two separate buckets, on purpose: a `flagged` line is the probe saying
+    // this should have been translated and was not — the actual finding. An
+    // `unmeasured` line is the probe itself failing to answer — never worth
+    // the same weight, and never silently treated as "readable" just because
+    // it isn't `flagged`.
+    const flagged = [...new Set(measured.flatMap((r) => r.survived.filter((s) => s.verdict === 'flagged').map((s) => s.line)))]
+    const probeErrors = [...new Set(measured.flatMap((r) => r.survived.filter((s) => s.verdict === 'unmeasured').map((s) => s.line)))]
+    const clean = measured.length > 0 && flagged.length === 0
+    results.push({ id: c.id, runs: perRun, measured: measured.length, clean, flagged, probeErrors })
+    process.stdout.write(measured.length === 0 ? 'E' : flagged.length > 0 ? 'X' : probeErrors.length > 0 ? '?' : '.')
+  }
+  process.stdout.write('\n')
+
+  const measuredCases = results.filter((r) => r.measured > 0)
+  const dirty = measuredCases.filter((r) => !r.clean)
+  const unmeasured = results.filter((r) => r.measured === 0)
+  const probeFailures = measuredCases.filter((r) => r.probeErrors.length > 0)
+
+  const report = {
+    model,
+    corpus: corpusName,
+    promptHash,
+    ranAt: new Date().toISOString(),
+    runs,
+    casesConsidered: cases.length,
+    measured: measuredCases.length,
+    clean: measuredCases.filter((r) => r.clean).length,
+    flaggedLines: dirty.map((r) => ({ id: r.id, lines: r.flagged })),
+    probeErrors: probeFailures.map((r) => ({ id: r.id, lines: r.probeErrors })),
+    unmeasured: unmeasured.map((r) => r.id),
+    results,
+  }
+
+  mkdirSync(dirname(join(ROOT, out)), { recursive: true })
+  writeFileSync(join(ROOT, out), `${JSON.stringify(report, null, 2)}\n`)
+
+  console.log(`${model}  ${corpusName}  prompt ${promptHash}  ${runs} runs per case`)
+  console.log(`  cases considered  ${report.casesConsidered} (expected: translate)`)
+  console.log(`  clean every run   ${report.clean}/${report.measured}`)
+  console.log(`  flagged lines     ${dirty.map((r) => r.id).join(', ') || 'none'}`)
+  if (probeFailures.length) console.log(`  probe failed on   ${probeFailures.length} case(s): ${probeFailures.map((r) => r.id).join(', ')}`)
+  if (unmeasured.length) console.log(`  could not measure ${unmeasured.length}: ${unmeasured.map((r) => r.id).join(', ')}`)
+  console.log(`  written to        ${out}`)
+
+  for (const r of dirty) {
+    console.log(`\n✗ ${r.id}`)
+    for (const line of r.flagged) console.log(`    flagged: ${line}`)
+  }
+  for (const r of probeFailures) {
+    console.log(`\n? ${r.id} (probe failed — not counted clean or flagged)`)
+    for (const line of r.probeErrors) console.log(`    unmeasured: ${line}`)
+  }
+
+  // Same non-judgement `calibrate.mjs` makes, except when a human asks for
+  // one: this run exists to produce a number, and exiting non-zero by default
+  // would make a report look like a broken tool. `--strict` is that human
+  // choosing otherwise, on their own machine — it is never wired into a gate.
+  if (strict && dirty.length > 0) {
+    console.error(`\n--strict: ${dirty.length} case(s) had a source line survive into the translation and be confirmed unreadable`)
+    process.exit(1)
+  }
+}
+
+// Reached only when this file is run directly (`node tools/eval/quality.mjs`
+// or `npm run eval:quality`), never when `quality.test.mjs` imports its pure
+// functions — see the file header for why that distinction is load-bearing.
+const invokedDirectly = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]
+if (invokedDirectly) await main()
