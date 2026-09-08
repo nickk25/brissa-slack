@@ -71,3 +71,20 @@ test('INV-app-41 the model is the one that was measured, unless something says o
   const chosen = readConfig({ ...complete, BRISSA_MODEL: 'claude-opus-5' })
   assert.ok(chosen.ok && chosen.config.model === 'claude-opus-5')
 })
+
+test('INV-app-67 a missing user token is a working state, not a fault', async () => {
+  // Without it `/translate` cannot read a channel and says so, while the
+  // message-menu shortcut carries its own text and is unaffected. Requiring it
+  // would make everyone grant a broad read permission for a feature that never
+  // needed one.
+  const without = readConfig(complete)
+  assert.ok(without.ok)
+  assert.equal(without.config.userToken, undefined)
+
+  const with_ = readConfig({ ...complete, SLACK_USER_TOKEN: 'xoxp-x' })
+  assert.ok(with_.ok && with_.config.userToken === 'xoxp-x')
+
+  // Blank is the same as absent: an empty line in `.env` must not become a token.
+  const blank = readConfig({ ...complete, SLACK_USER_TOKEN: '   ' })
+  assert.ok(blank.ok && blank.config.userToken === undefined)
+})

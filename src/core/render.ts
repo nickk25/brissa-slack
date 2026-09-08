@@ -87,7 +87,15 @@ function quote(text: string): string {
   return oneLine.length <= QUOTE_LIMIT ? oneLine : `${oneLine.slice(0, QUOTE_LIMIT - 1).trimEnd()}…`
 }
 
-export function renderTranslation(translation: Translation, source: Source): readonly Block[] {
+/**
+ * `source` is optional, and its absence is a real case rather than a shortcut.
+ *
+ * The anchor exists because an ephemeral lands at the bottom of a channel with
+ * nothing tying it to the message it translates. Text a person just typed into a
+ * slash command has no such problem — quoting it back to them under their own
+ * name would be the app repeating what they said a second ago.
+ */
+export function renderTranslation(translation: Translation, source?: Source): readonly Block[] {
   const languages = translation.foundLanguages.map(name)
   const from =
     languages.length === 0
@@ -106,10 +114,13 @@ export function renderTranslation(translation: Translation, source: Source): rea
   // current display name, which is why this module needs no directory, no
   // `users:read` scope and no cache of names that go stale. In an ephemeral it
   // notifies nobody: the message is never delivered to the person named.
-  const anchor = `> <@${source.authorId}>: ${quote(source.text)}`
+  const body =
+    source === undefined
+      ? escapeMrkdwn(translation.text)
+      : `> <@${source.authorId}>: ${quote(source.text)}\n${escapeMrkdwn(translation.text)}`
 
   return [
-    { type: 'section', text: { type: 'mrkdwn', text: `${anchor}\n${escapeMrkdwn(translation.text)}` } },
+    { type: 'section', text: { type: 'mrkdwn', text: body } },
     // Says which language this came from and that only this reader can see it.
     // Without the second half, a first-time reader's reasonable assumption is
     // that the whole channel just watched a bot translate a colleague for them.
@@ -125,12 +136,16 @@ export function renderTranslation(translation: Translation, source: Source): rea
  * that produces nothing at all reads as broken — so every one of these is a case
  * where saying nothing would be worse than saying something small.
  */
-export type Notice = 'already-readable' | 'nobody-knows-you' | 'translation-failed'
+export type Notice = 'already-readable' | 'nothing-to-translate' | 'nobody-knows-you' | 'translation-failed'
 
 const NOTICES: Record<Notice, string> = {
   // Deliberately not an apology. The reader asked, Brissa looked, and the answer
   // is that they can already read it — which is information, not a failure.
   'already-readable': 'Nothing to translate here — this is already in a language you read.',
+  // Different from the line above, and the difference matters to whoever is
+  // reading it: one says "you can read this", the other says "there was nothing
+  // to read". Collapsing them would answer a question nobody asked.
+  'nothing-to-translate': 'Nothing to translate — there are no messages here from anybody else.',
   'nobody-knows-you': 'Brissa does not know which languages you read yet, so it cannot tell what to translate.',
   'translation-failed': 'Could not translate that one. It is worth trying again.',
 }

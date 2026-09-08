@@ -382,3 +382,13 @@ for something nobody has deployed, and it does mean the HTTP path is finished
 before it is reachable.
 
 And nothing counts anything. `report` prints a line to a terminal.
+
+## Two things the anchor decides
+
+- Text you typed yourself is not quoted back at you. `test: INV-app-65`
+- A message somebody else wrote still carries who wrote it. `test: INV-app-66`
+- A missing user token is a working state rather than a fault: `/translate`
+  cannot read a channel and says so, while the shortcut carries its own text and
+  is unaffected. Requiring it would make everyone grant a broad read permission
+  for a feature that never needed one. `test: INV-app-67`
+

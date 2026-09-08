@@ -80,6 +80,11 @@ that answered it in advance was a contract stating something false.
 - A translation whose source language is unknown still says it was translated;
   otherwise the context line reads "Translated from " and trails off, which looks
   like the bug it is not. `test: INV-core-23`
+- The anchor is omitted when there is no source to point at. It exists because an
+  ephemeral lands at the bottom of a channel with nothing tying it to the message
+  it translates; text somebody just typed into a slash command has no such
+  problem, and quoting it back under their own name is the app repeating what
+  they said a second ago. `test: INV-core-25`
 - Every notice is one line, and none of them apologises. Notices exist only
   because somebody clicked and there was no translation to show: silence would
   read as a broken button, a paragraph as an incident, and "you can already read

@@ -236,10 +236,10 @@ a revoked app token does not reconnect in a tight loop forever.
   `test: INV-slack-37`
 - `hello` and `disconnect` are recognised, and neither is an error.
   `test: INV-slack-38`
-- A frame this app has no use for is named rather than mistaken for one —
-  including an `events_api` frame with no envelope id, which cannot be
-  acknowledged, so acting on it would guarantee the redelivery it was meant to
-  prevent. `test: INV-slack-39`
+- A frame this app has no use for is named rather than mistaken for one. That
+  includes whatever Slack adds next, and an `events_api` frame with no envelope
+  id — which cannot be acknowledged, so acting on it would guarantee the
+  redelivery it was meant to prevent. `test: INV-slack-39`
 - The envelope is acknowledged before it is handed on. `test: INV-slack-40`
 - A frame with nothing to act on is acknowledged to nobody; acknowledging one we
   did not understand would tell Slack it was handled. `test: INV-slack-41`
@@ -360,4 +360,6 @@ to the constant in `command.ts` itself.
   `test: INV-slack-65`
 - A malformed payload, or one with nowhere to answer, is refused by name.
   `test: INV-slack-66`
+- A slash command is acknowledged and handed on unparsed, same discipline as an
+  interaction. `test: INV-slack-67`
 

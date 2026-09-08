@@ -72,11 +72,25 @@ const detail = (err: unknown): string => String((err as Error)?.message ?? err)
 async function gatherSources(
   history: History,
   command: SlashCommand,
-): Promise<{ readonly ok: true; readonly sources: readonly Source[] } | { readonly ok: false; readonly detail: string }> {
+): Promise<
+  | {
+      readonly ok: true
+      readonly sources: readonly Source[]
+      /**
+       * Whether each translation should carry the anchor naming who wrote it.
+       *
+       * True for messages read out of a channel, where an ephemeral lands at the
+       * bottom with nothing tying it to its original. False for text typed into
+       * the command, where the anchor would quote somebody back to themselves.
+       */
+      readonly anchored: boolean
+    }
+  | { readonly ok: false; readonly detail: string }
+> {
   const { argument } = command
 
   if (argument.kind === 'literal') {
-    return { ok: true, sources: [{ authorId: command.invokedBy, text: argument.text }] }
+    return { ok: true, sources: [{ authorId: command.invokedBy, text: argument.text }], anchored: false }
   }
 
   const limit = argument.kind === 'count' ? argument.count : LATEST_WINDOW
@@ -87,12 +101,12 @@ async function gatherSources(
     // Oldest first: reading a handful of messages in the order they were said
     // is what makes them a conversation rather than a list. `history.read`
     // itself stays newest-first, matching Slack's own order.
-    return { ok: true, sources: [...read.messages].reverse() }
+    return { ok: true, sources: [...read.messages].reverse(), anchored: true }
   }
 
   // 'latest': the first message, newest first, that is not the caller's own.
   const found = read.messages.find((m) => m.authorId !== command.invokedBy)
-  return { ok: true, sources: found ? [found] : [] }
+  return { ok: true, sources: found ? [found] : [], anchored: true }
 }
 
 /**
@@ -135,7 +149,7 @@ export async function handleCommand(ports: CommandPorts, command: SlashCommand):
   // readable, when really there was no message at all. Reused anyway rather
   // than invented, because a new wording is a change to `renderNotice` and
   // this module does not own `src/core/render.ts`.
-  if (gathered.sources.length === 0) return await notice('already-readable')
+  if (gathered.sources.length === 0) return await notice('nothing-to-translate')
 
   const results = await Promise.all(
     gathered.sources.map(async (source) => {
@@ -152,7 +166,15 @@ export async function handleCommand(ports: CommandPorts, command: SlashCommand):
   let anyFailed = false
   for (const { source, result } of results) {
     if (result.kind === 'translated') {
-      translatedBlocks.push(...renderTranslation(result.translation, source))
+      // Text typed into the command has no author but the person who typed it,
+      // and quoting somebody back to themselves is noise. `renderTranslation`
+      // omits the anchor entirely when there is no source to point at.
+      // Text typed into the command is quoted back to nobody: `renderTranslation`
+      // omits the anchor entirely when there is no source to point at, because
+      // repeating somebody's own words under their own name is noise.
+      translatedBlocks.push(
+        ...(gathered.anchored ? renderTranslation(result.translation, source) : renderTranslation(result.translation)),
+      )
       translatedCount++
     } else if (result.kind === 'failed') {
       anyFailed = true

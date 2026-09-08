@@ -14,11 +14,14 @@ import { argv } from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { defaultTranslator } from '../llm/decide.ts'
 import { connectSocketMode } from '../slack/socket.ts'
+import { readCommand } from '../slack/command.ts'
+import { createSlackHistory } from '../slack/history.ts'
 import { readShortcut } from '../slack/shortcut.ts'
 import { createSlackApi } from '../slack/web.ts'
 import { createMemoryDirectory } from '../store/memory.ts'
 import { createMemorySeen } from '../store/seen.ts'
 import { readConfig } from './config.ts'
+import { handleCommand } from './command.ts'
 import { handleShortcut } from './shortcut.ts'
 import { describe } from './report.ts'
 import { acceptEnvelope, type Work } from './http.ts'
@@ -67,6 +70,25 @@ export function main(): void {
     // The half that needs no channel membership: somebody picks Brissa from a
     // message's "..." menu and the answer comes back only to them, in a channel
     // Brissa has never joined and cannot see.
+    // `/translate`, which reads the channel as the person who typed it. Without
+    // a user token there is nothing to read with, and the command says so rather
+    // than failing quietly — the shortcut carries its own text and is unaffected.
+    onCommand: (payload) => {
+      const read = readCommand(payload)
+      if (!read.ok) {
+        console.log(`  command ignored: ${read.because}`)
+        return
+      }
+      const history = config.userToken === undefined ? undefined : createSlackHistory(config.userToken)
+      if (history === undefined) {
+        console.log('  /translate needs SLACK_USER_TOKEN — see .env.example')
+        return
+      }
+      void handleCommand({ ...work.ports, history }, read.command).then((outcome) => {
+        const what = outcome.kind === 'noticed' ? `noticed:${outcome.notice}` : outcome.kind
+        console.log(`  ${read.command.channelId}  /translate  ${what}`)
+      })
+    },
     onInteractive: (payload) => {
       const read = readShortcut(payload)
       if (!read.ok) {

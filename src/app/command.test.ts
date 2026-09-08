@@ -94,20 +94,23 @@ test('INV-app-56 literal text is translated directly, without touching history a
   assert.equal(w.historyCalls(), 0)
 })
 
-test('INV-app-57 a target that produces nothing is still answered, not left silent', async () => {
+test('INV-app-57 a target that produces nothing is still answered, and says which nothing it was', async () => {
   // An empty channel, and a caller who has only ever talked to themselves —
-  // both leave nothing to point a translation at.
+  // both leave nothing to point a translation at. Told apart from "you can
+  // already read this", because one says the reader is fine and the other says
+  // there was never anything there.
   const empty = wire({ history: [] })
   assert.deepEqual(await handleCommand(empty.ports, command({ kind: 'latest' })), {
     kind: 'noticed',
-    notice: 'already-readable',
+    notice: 'nothing-to-translate',
   })
   assert.equal(empty.sent.length, 1)
+  assert.ok(empty.sent[0]?.text.includes('no messages here from anybody else'))
 
   const onlySelf = wire({ history: [{ authorId: 'U-nick', text: 'talking to myself' }] })
   assert.deepEqual(await handleCommand(onlySelf.ports, command({ kind: 'latest' })), {
     kind: 'noticed',
-    notice: 'already-readable',
+    notice: 'nothing-to-translate',
   })
   assert.deepEqual(onlySelf.translated, [])
 })
@@ -210,4 +213,26 @@ test('INV-app-64 nothing here writes to a log, a file, or any store', async () =
     console.error = original.error
   }
   assert.deepEqual(calls, [])
+})
+
+test('INV-app-65 text you typed yourself is not quoted back at you', async () => {
+  // The anchor exists because an ephemeral lands at the bottom of a channel with
+  // nothing tying it to the message it translates. Text somebody just typed into
+  // a slash command has no such problem, and quoting it back under their own
+  // name is the app repeating what they said a second ago.
+  const w = wire({})
+  await handleCommand(w.ports, command({ kind: 'literal', text: 'Guten Morgen zusammen' }))
+
+  const blocks = JSON.stringify(w.sent[0]?.blocks ?? [])
+  assert.ok(!blocks.includes('U-nick'))
+  assert.ok(!blocks.includes('&gt;'))
+  assert.ok(!blocks.includes('Guten Morgen zusammen'))
+})
+
+test('INV-app-66 a message somebody else wrote still carries who wrote it', async () => {
+  const w = wire({ history: [{ authorId: 'U-jens', text: GERMAN }] })
+  await handleCommand(w.ports, command({ kind: 'latest' }))
+
+  const blocks = JSON.stringify(w.sent[0]?.blocks ?? [])
+  assert.ok(blocks.includes('<@U-jens>'))
 })
