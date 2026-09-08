@@ -204,3 +204,58 @@ It is not in `fixtures/corpus/` yet because the corpus is protected: whoever can
 edit the expected answer can never be wrong. It is named here so it is not lost
 while it waits for a person to approve it.
 
+## The quality layer exists now, and it is narrower than the name promises
+
+`tools/eval/quality.mjs`. Built to close the gap the entry above describes: the
+decision eval scored `c-001` a pass on the same run that returned its last line
+untouched, in German, inside an otherwise Spanish translation, and nothing else
+in this repository would have noticed either.
+
+**What it measures:** for every corpus case whose expected decision is
+`translate`, does each source line reappear — verbatim, or close enough that
+nothing was done to it — in the translated output. Deterministic string
+comparison, not a model judging a model: a judge model answers "is this
+translation good" with the same fluent confidence that produced the dropped
+line in the first place, which makes it a check that can be charmed by the
+exact failure it exists to catch.
+
+**What it deliberately does NOT measure:** whether the translation reads
+naturally, whether idiom or tone survived, whether a correctly *translated*
+line is simply wrong, or the decision itself — that is still `calibrate.mjs`'s
+job and this file skips any case that scored anything but `translate`. A
+"clean" result here says only that nothing was left behind, not that what
+arrived is good.
+
+**The hard part was telling "left behind" from "correctly untouched".** A
+reader who reads English and Spanish will legitimately see an English line —
+`c-001`'s own `Hi all.` — survive a translation unchanged, and a check that
+only asked "does this source line appear in the output" would flag that
+greeting exactly as loudly as the German line that actually failed. The
+distinguishing rule: strip punctuation and check whether most of a line's
+words are closed-class function words (articles, pronouns, conjunctions, a
+handful of greetings) belonging to a language the reader reads. `Hi all.` is
+100% English function words; the failing line, `Sorry, aber wir sollten alle
+an board haben`, is mostly German function words with a couple of
+English-shaped tokens (`sorry`, `an`, `board` are real English words,
+deliberately excluded from the English list for exactly this reason) — nowhere
+near a majority. This is a heuristic, not language identification, and it is
+openly wrong in both directions: a short, mostly-loanword line that was
+genuinely never translated can read as "already readable" (a missed failure),
+and a legitimately-kept line with almost no function words — a product name on
+its own line — can read as "survived" when it is fine (noise in the report).
+That asymmetry is one more reason this reports rather than blocks.
+
+**Never run against a real model.** Every test in `quality.test.mjs` uses a
+fake translator and a stand-in for `hasNothingToRead` — no network, no API
+key. The tool imports the real `createTranslator` (`src/llm/decide.ts`) and the
+real `hasNothingToRead` (`src/core/ask.ts`) dynamically, reached only from
+`main()`, which nothing in this repository's test suite ever calls. What that
+means honestly: the line-survival logic is exercised, the wiring to the real
+translator and the real corpus is not, and neither is whether the heuristic
+above holds up on cases beyond the ones written into the test file. The first
+real run is still owed.
+
+**Revisit when** it has run against a real model at least once, and again if
+the function-word lists prove too small or too English/Spanish-specific for a
+reader who reads a third language.
+

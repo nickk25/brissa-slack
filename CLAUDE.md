@@ -99,6 +99,7 @@ Generated from `package.json`. Do not edit by hand.
 | `npm run contracts:check` | `node tools/agentic/contracts.mjs --check` |
 | `npm run eval:check` | `node tools/eval/contamination.mjs && node tools/eval/check.mjs` |
 | `npm run eval:contamination` | `node tools/eval/contamination.mjs` |
+| `npm run eval:quality` | `node --experimental-strip-types --env-file-if-exists=.env tools/eval/quality.mjs` |
 | `npm run gate` | `node tools/agentic/gate.mjs` |
 | `npm run gate:plan` | `node tools/agentic/gate.mjs --plan` |
 | `npm run invariants` | `node tools/agentic/invariants.mjs` |
