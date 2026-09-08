@@ -53,6 +53,10 @@ different owners.
 `stage` on a failure is load-bearing rather than decorative: a translate failure
 is `src/llm`'s to fix, a send failure is `src/slack`'s. Same word, two owners.
 
+`sent` does not mean seen, and no outcome here claims otherwise. Slack accepts an
+ephemeral for a reader who is not looking and reports success; the quotation is
+in `src/slack/CLAUDE.md`. This module names what is known.
+
 ## Two guarantees, and one deliberate non-guarantee
 
 **This never rejects.** Every port call is wrapped, and so is everything between
@@ -89,8 +93,8 @@ absence to be read later as a bug.
 - A port that throws becomes an outcome, never a rejected promise.
   `test: INV-app-06`
 - A reader who was not in the channel is not a failure, and a refusal is not an
-  absence. One is the expected answer for a message that arrived overnight; the
-  other is somebody's job. `test: INV-app-07`
+  absence. One is expected; the other is somebody's job. `test: INV-app-07`
+
 - A send that throws is the sending module's failure, not the model's.
   `test: INV-app-08`
 - A disabled channel spends nothing at all — no model call, no post — and says so

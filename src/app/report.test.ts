@@ -14,13 +14,13 @@ test('INV-app-43 readers are counted by what happened to them, skips by their re
   const line = describe({
     kind: 'considered',
     readers: [
-      { userId: 'U1', kind: 'delivered' },
-      { userId: 'U2', kind: 'delivered' },
+      { userId: 'U1', kind: 'sent' },
+      { userId: 'U2', kind: 'sent' },
       { userId: 'U3', kind: 'skipped', because: 'channel-disabled' },
       { userId: 'U4', kind: 'silent' },
     ],
   })
-  assert.equal(line, 'delivered×2 skipped:channel-disabled×1 silent×1')
+  assert.equal(line, 'sent×2 skipped:channel-disabled×1 silent×1')
 })
 
 test('INV-app-44 a failure is spelled out rather than counted away', async () => {
@@ -30,10 +30,10 @@ test('INV-app-44 a failure is spelled out rather than counted away', async () =>
   const line = describe({
     kind: 'considered',
     readers: [
-      { userId: 'U1', kind: 'delivered' },
+      { userId: 'U1', kind: 'sent' },
       { userId: 'U2', kind: 'failed', stage: 'translate', detail: 'overloaded' },
     ],
   })
   assert.ok(line.includes('translate: overloaded'))
-  assert.ok(line.includes('delivered×1'))
+  assert.ok(line.includes('sent×1'))
 })
