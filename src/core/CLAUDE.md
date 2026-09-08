@@ -154,14 +154,23 @@ The port lives here rather than in `src/llm` so the core owns the shape of the
 question. An interface declared in the adapter would let the SDK's vocabulary
 cross back one field at a time.
 
-## Three ports, and why all of them are declared here
+## Four ports, and why all of them are declared here
 
 `translator.ts` asks for a translation. `directory.ts` asks who reads what in a
-channel. `seen.ts` asks whether a delivery has already been handled. None of them
-is called by anything in this module, and all of them belong here anyway: the
-core owns the shape of the question, and an interface declared in the module that
-answers it would let that module's vocabulary — a table name, a row, an SDK type
-— cross back one field at a time.
+channel. `seen.ts` asks whether a delivery has already been handled. `history.ts`
+asks what was recently said in a channel. None of them is called by anything in
+this module, and all of them belong here anyway: the core owns the shape of the
+question, and an interface declared in the module that answers it would let that
+module's vocabulary — a table name, a row, an SDK type — cross back one field at
+a time.
+
+`history.ts` exists for `/translate`, which has to decide which of several
+recent messages to act on — skip the caller's own, take the last N — before it
+can even ask for a translation. That is a judgement about data, the same kind
+`shouldAsk` makes, so its shape is declared here rather than in
+`src/slack/history.ts`, which only answers it. Its own read-only contract, and
+why it must never throw, are documented on the port itself rather than repeated
+here.
 
 `seen.ts` is the odd one, and it is worth saying why it is a port at all. What it
 guards is not a product rule: it is the difference between one translation and

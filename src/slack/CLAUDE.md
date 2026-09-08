@@ -302,3 +302,62 @@ translation to the room.
 - An interaction is acknowledged and handed on unparsed: this module knows the
   frame, `shortcut.ts` knows what is inside it. `test: INV-slack-55`
 
+## The slash command, and the other credential
+
+`/translate` reads recent messages instead of one Slack already handed it, and
+that read cannot go through the bot token. `conversations.history` with a bot
+token answers `channel_not_found` unless the app is a member of the channel,
+and joining one is exactly as visible as it is for the automatic path — visible
+to everyone in it, including, in a Slack Connect channel, the organisation on
+the other side. So `history.ts` reads with a **user token**: Brissa reads as
+whoever typed the command, in channels they already belong to, and joins
+nothing. `docs/DECISIONS.md` records the same reasoning for the shortcut's own
+door into this problem; this is the read-side half of it.
+
+Four things about that token are structural rather than a habit this module
+has to keep:
+
+- It is asked for only in response to a command. Nothing here polls, syncs, or
+  reads a channel ahead of somebody typing `/translate` — there is no second
+  caller of `history.ts` anywhere in this codebase.
+- Nothing it reads is persisted. A message reaches the model that translates it
+  and the screen of whoever asked; there is no store, no cache, no file and no
+  log line carrying its text.
+- It is read-only in this code path. `History` declares one method and this
+  file implements only that one; posting a translation back happens through
+  `response_url`, a different credential entirely, held by `shortcut.ts`.
+- `manifest.json` requests only history scopes for it — `channels:history`,
+  `groups:history`, `im:history`, `mpim:history` — never `search:read`,
+  `files:read` or a profile scope it has no use for.
+
+`command.ts` is the other half: turning the slash command payload Slack sends
+into our own shape, and turning its one free-text argument into exactly one of
+three things — nothing (the most recent message that is not the caller's own),
+a small integer (a count), or literal text. The count is bounded; the stated
+maximum and why it is that number rather than Slack's own page size live next
+to the constant in `command.ts` itself.
+
+- An ordinary read returns messages newest first, each with an author and text,
+  and nothing that is not a person saying something — mirroring `receive.ts`'s
+  own list of what a join, a leave or a topic change is instead.
+  `test: INV-slack-56`
+- A message with no `user` still has an author, the same fallback the shortcut
+  and the events adapter both use. `test: INV-slack-57`
+- Slack refusing with a 200 is reported as data. `test: INV-slack-58`
+- A bad status and a dropped connection are both reported, never thrown.
+  `test: INV-slack-59`
+- The call reads with the user token and never posts anything — a GET, no
+  body, `conversations.history` and nothing else. `test: INV-slack-60`
+- Only history scopes are requested, for the user token in `manifest.json` —
+  no search, no files, no profile reads. `test: INV-slack-61`
+- A slash command payload becomes the fields the app needs, and empty text
+  defaults to the latest message rather than an error. `test: INV-slack-62`
+- A small integer becomes a count. `test: INV-slack-63`
+- Anything else is literal text, verbatim — `/translate 5 people showed up` is
+  a sentence that happens to start with a digit, not a count of five.
+  `test: INV-slack-64`
+- A count of zero, or larger than the stated maximum, is refused by name.
+  `test: INV-slack-65`
+- A malformed payload, or one with nowhere to answer, is refused by name.
+  `test: INV-slack-66`
+
