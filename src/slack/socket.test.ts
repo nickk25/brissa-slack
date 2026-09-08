@@ -230,3 +230,38 @@ test('INV-slack-45 arriving connected resets the backoff', async () => {
   assert.ok(said.includes('reconnecting in 1000ms'))
   connection.close()
 })
+
+test('INV-slack-55 an interaction is acknowledged and handed on unparsed', async () => {
+  // This module knows the frame; `shortcut.ts` knows what is inside it. Parsing
+  // here would put the shape of a shortcut in the file that reads sockets.
+  const order: string[] = []
+  const listeners = new Map<string, (event: { data: unknown }) => void>()
+  const socket: Socket = {
+    send: (data) => order.push(`ack:${JSON.parse(data).envelope_id}`),
+    close: () => {},
+    addEventListener: ((type: string, listener: (event: { data: unknown }) => void) => {
+      listeners.set(type, listener)
+    }) as Socket['addEventListener'],
+  }
+
+  const seen: unknown[] = []
+  const connection = connectSocketMode({
+    appToken: 'xapp-x',
+    open: () => socket,
+    fetchImpl: (async () => ({ json: async () => ({ ok: true, url: 'wss://example.test' }) })) as unknown as typeof fetch,
+    onEnvelope: () => order.push('event'),
+    onInteractive: (payload) => {
+      order.push('handed on')
+      seen.push(payload)
+    },
+  })
+
+  await new Promise((r) => setTimeout(r, 0))
+  listeners.get('message')?.({
+    data: JSON.stringify({ type: 'interactive', envelope_id: 'Env9', payload: { type: 'message_action' } }),
+  })
+
+  assert.deepEqual(order, ['ack:Env9', 'handed on'])
+  assert.deepEqual(seen, [{ type: 'message_action' }])
+  connection.close()
+})

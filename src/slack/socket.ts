@@ -31,6 +31,12 @@ export type Frame =
   | { readonly kind: 'hello' }
   /** An event, with the id that must be echoed back to acknowledge it. */
   | { readonly kind: 'event'; readonly envelopeId: string; readonly envelope: Envelope }
+  /**
+   * Somebody clicked something. The payload is left unparsed on purpose — this
+   * module knows the frame, `shortcut.ts` knows what is inside it, and mixing
+   * the two would put the shape of a shortcut in the file that reads sockets.
+   */
+  | { readonly kind: 'interactive'; readonly envelopeId: string; readonly payload: unknown }
   /** Slack asking for the connection to be re-established. Routine, not an error. */
   | { readonly kind: 'disconnect'; readonly reason: string }
   | { readonly kind: 'other'; readonly type: string }
@@ -66,6 +72,10 @@ export function readFrame(raw: string): Frame {
   if (frame.type === 'hello') return { kind: 'hello' }
   if (frame.type === 'disconnect') return { kind: 'disconnect', reason: frame.reason ?? 'unknown' }
 
+  if (frame.type === 'interactive' && typeof frame.envelope_id === 'string') {
+    return { kind: 'interactive', envelopeId: frame.envelope_id, payload: frame.payload ?? null }
+  }
+
   if (frame.type === 'events_api' && typeof frame.envelope_id === 'string') {
     return {
       kind: 'event',
@@ -94,6 +104,8 @@ export interface SocketModeOptions {
    * the entire point.
    */
   readonly onEnvelope: (envelope: Envelope) => void
+  /** Called once per interaction, also after the acknowledgement. */
+  readonly onInteractive?: (payload: unknown) => void
   /** Connection lifecycle, for whoever wants to say something about it. */
   readonly onStatus?: (status: string) => void
   /** Injected so a test can open a fake socket and drive it by hand. */
@@ -169,13 +181,15 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
         ws.close()
         return
       }
-      if (frame.kind !== 'event') return
+      if (frame.kind !== 'event' && frame.kind !== 'interactive') return
 
       // Acknowledged first, always. Slack redelivers anything it has not heard
       // back about within three seconds, and the work below can take longer than
       // that on its own.
       ws.send(JSON.stringify({ envelope_id: frame.envelopeId }))
-      options.onEnvelope(frame.envelope)
+
+      if (frame.kind === 'event') options.onEnvelope(frame.envelope)
+      else options.onInteractive?.(frame.payload)
     })
 
     ws.addEventListener('close', () => {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { escapeMrkdwn, renderTranslation } from './render.ts'
+import { escapeMrkdwn, noticeText, renderNotice, renderTranslation } from './render.ts'
 import type { Source } from './render.ts'
 
 const JENS: Source = { authorId: 'U-jens', text: 'Passt bei mir auch!' }
@@ -164,4 +164,20 @@ test('INV-core-23 a translation whose source language is unknown still says it w
   const c = context(blocks)
   assert.ok(c?.type === 'context')
   assert.equal(c.elements[0]?.text, 'Translated · only visible to you')
+})
+
+test('INV-core-24 every notice is one line, and none of them apologises', () => {
+  // These only ever appear because somebody clicked and there was no translation
+  // to show. Silence would read as a broken button; a paragraph would read as an
+  // incident. One line, and "you can already read this" is information rather
+  // than a failure.
+  for (const notice of ['already-readable', 'nobody-knows-you', 'translation-failed'] as const) {
+    const blocks = renderNotice(notice)
+    assert.equal(blocks.length, 1)
+    const c = context(blocks)
+    assert.ok(c?.type === 'context')
+    assert.equal(c.elements[0]?.text, noticeText(notice))
+    assert.ok(!c.elements[0]?.text.includes('\n'))
+    assert.ok(!/sorry|apolog/i.test(c.elements[0]?.text ?? ''))
+  }
 })

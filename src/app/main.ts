@@ -14,10 +14,12 @@ import { argv } from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { defaultTranslator } from '../llm/decide.ts'
 import { connectSocketMode } from '../slack/socket.ts'
+import { readShortcut } from '../slack/shortcut.ts'
 import { createSlackApi } from '../slack/web.ts'
 import { createMemoryDirectory } from '../store/memory.ts'
 import { createMemorySeen } from '../store/seen.ts'
 import { readConfig } from './config.ts'
+import { handleShortcut } from './shortcut.ts'
 import { describe } from './report.ts'
 import { acceptEnvelope, type Work } from './http.ts'
 
@@ -62,6 +64,20 @@ export function main(): void {
   const connection = connectSocketMode({
     appToken: config.appToken,
     onStatus: (status) => console.log(`  ${status}`),
+    // The half that needs no channel membership: somebody picks Brissa from a
+    // message's "..." menu and the answer comes back only to them, in a channel
+    // Brissa has never joined and cannot see.
+    onInteractive: (payload) => {
+      const read = readShortcut(payload)
+      if (!read.ok) {
+        console.log(`  shortcut ignored: ${read.because}`)
+        return
+      }
+      void handleShortcut(work.ports, read.shortcut).then((outcome) => {
+        const what = outcome.kind === 'noticed' ? `noticed:${outcome.notice}` : outcome.kind
+        console.log(`  ${read.shortcut.channelId}  shortcut  ${what}`)
+      })
+    },
     onEnvelope: (envelope) => {
       // The channel is printed with every outcome for one unglamorous reason:
       // switching Brissa on in a channel needs that channel's id, and there is

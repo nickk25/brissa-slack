@@ -116,3 +116,32 @@ export function renderTranslation(translation: Translation, source: Source): rea
     { type: 'context', elements: [{ type: 'mrkdwn', text: `${from} · only visible to you` }] },
   ]
 }
+
+/**
+ * The short answers the shortcut gives when there is no translation to show.
+ *
+ * On the automatic path silence is the product: nothing appears and nothing
+ * needs to be said. The shortcut inverts that. Somebody clicked, and a click
+ * that produces nothing at all reads as broken — so every one of these is a case
+ * where saying nothing would be worse than saying something small.
+ */
+export type Notice = 'already-readable' | 'nobody-knows-you' | 'translation-failed'
+
+const NOTICES: Record<Notice, string> = {
+  // Deliberately not an apology. The reader asked, Brissa looked, and the answer
+  // is that they can already read it — which is information, not a failure.
+  'already-readable': 'Nothing to translate here — this is already in a language you read.',
+  'nobody-knows-you': 'Brissa does not know which languages you read yet, so it cannot tell what to translate.',
+  'translation-failed': 'Could not translate that one. It is worth trying again.',
+}
+
+/** One line, only for the person who asked. */
+export function renderNotice(notice: Notice): readonly Block[] {
+  return [{ type: 'context', elements: [{ type: 'mrkdwn', text: NOTICES[notice] }] }]
+}
+
+/** The plain-text form of a notice, for clients that render no blocks. */
+export function noticeText(notice: Notice): string {
+  return NOTICES[notice]
+}
+
