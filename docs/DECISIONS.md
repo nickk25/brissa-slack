@@ -164,3 +164,43 @@ definition looking at Slack at the moment they invoke it. It was on the list as
 
 **Source:** `https://docs.slack.dev/reference/methods/chat.postEphemeral`
 
+## The shortcut works where the bot cannot go
+
+Two things the documentation never states outright, and both now measured rather
+than argued:
+
+**The message shortcut appears without the app being a member of the channel.**
+**It works on a message written by somebody in the external organisation.**
+
+Observed in the case that matters most: a private channel created by an
+organisation outside this workspace, a message written by a member of that
+organisation, Brissa not a member of the channel and never invited to it. The
+shortcut appeared in the message menu, the translation came back, and Slack
+labelled it "Only visible to you". Nobody on the other side saw anything —
+neither a translation, nor a bot, nor the existence of the shortcut.
+
+That settles the architecture. The automatic path requires membership, which
+requires visibly joining a channel shared with a client, which announces that you
+do not understand them. The shortcut requires nothing, and it is also the only
+path whose delivery is reliable: `chat.postEphemeral` reaches a reader who is
+"currently active", and somebody who just clicked is active by definition.
+
+**What the shortcut costs** is a click per message. It is the right way round.
+The automatic path remains useful in channels where being seen costs nothing —
+internal ones — and is the wrong tool everywhere else.
+
+**Revisit if** Slack changes shortcut visibility rules for externally shared
+channels. Nothing in their documentation promises this behaviour, which is why it
+is recorded here as observed rather than as read.
+
+## The corpus has a case waiting
+
+The same real message exposed a translation failure worth keeping. Five lines of
+German, four translated, and the last one — `Sorry, aber wir sollten alle an
+board haben` — returned untouched, in German, inside an otherwise Spanish
+translation.
+
+It is not in `fixtures/corpus/` yet because the corpus is protected: whoever can
+edit the expected answer can never be wrong. It is named here so it is not lost
+while it waits for a person to approve it.
+
