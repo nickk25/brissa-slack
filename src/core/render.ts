@@ -172,7 +172,26 @@ const CUT_NOTICE = 'Cut — too long for Slack to send in one block.'
 function boundToSection(body: string): string {
   if (body.length <= SECTION_LIMIT) return body
   const budget = SECTION_LIMIT - CUT_NOTICE.length - 1 // 1 for the newline before it
-  return `${body.slice(0, budget).trimEnd()}\n${CUT_NOTICE}`
+  return `${withoutAHalfReference(body.slice(0, budget)).trimEnd()}\n${CUT_NOTICE}`
+}
+
+/**
+ * Never end inside one of Slack's own references.
+ *
+ * A cut that lands in the middle of `<@U0APEL2PG2C>` leaves a `<` with nothing
+ * closing it, and Slack's parser does not treat that as ordinary text — an
+ * unterminated reference can swallow whatever follows, including the line that
+ * says the message was cut. Measured across ninety boundary positions with one
+ * mention sliding through them, twelve produced a mention left open.
+ *
+ * So the tail is trimmed back to before the stray `<`. It costs a few characters
+ * of an already-truncated translation, which is a trade with nothing on the
+ * other side of it.
+ */
+function withoutAHalfReference(text: string): string {
+  const opened = text.lastIndexOf('<')
+  if (opened === -1) return text
+  return text.indexOf('>', opened) === -1 ? text.slice(0, opened) : text
 }
 
 /**

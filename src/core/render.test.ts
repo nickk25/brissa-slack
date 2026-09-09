@@ -265,3 +265,21 @@ test('INV-core-27 only Slack’s own reference syntax survives escaping', () => 
   for (const live of kept) assert.equal(escapeKeepingReferences(live), live, live)
   for (const dead of inert) assert.ok(!escapeKeepingReferences(dead).includes('<'), dead)
 })
+
+test('INV-core-30 a cut never ends inside one of Slack’s own references', () => {
+  // A `<` with nothing closing it is not ordinary text to Slack's parser: an
+  // unterminated reference can swallow whatever follows, including the line that
+  // says the message was cut. Measured before the guard existed, twelve of these
+  // ninety boundary positions left a mention open.
+  for (let pad = 2900; pad < 2990; pad++) {
+    const text = `${'b'.repeat(pad)} <@U0APEL2PG2C> ${'c'.repeat(200)}`
+    const blocks = renderTranslation({ text, foundLanguages: ['de'] }, { authorId: 'U1', text: 'x' })
+    const s = section(blocks)
+    assert.ok(s?.type === 'section')
+    const body = s.text.text
+
+    assert.ok(body.length <= 3000, `over the limit at pad ${pad}`)
+    const opened = body.lastIndexOf('<')
+    assert.ok(opened === -1 || body.indexOf('>', opened) !== -1, `reference left open at pad ${pad}`)
+  }
+})

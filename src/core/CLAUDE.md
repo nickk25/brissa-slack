@@ -104,6 +104,11 @@ that answered it in advance was a contract stating something false.
 - The block limit is counted after escaping, not before. Escaping expands text
   — `&` becomes `&amp;` — so a bound checked on the raw string would let an
   escaped block through that Slack still refuses. `test: INV-core-29`
+- A cut never ends inside one of Slack's own references. A `<` with nothing
+  closing it is not ordinary text to Slack's parser: an unterminated reference
+  can swallow whatever follows, including the line that says the message was cut.
+  Twelve of ninety boundary positions did exactly that before the guard existed.
+  `test: INV-core-30`
 
 ## Why rendering is here and not in the adapter
 
