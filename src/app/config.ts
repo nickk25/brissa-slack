@@ -43,6 +43,14 @@ export interface Config {
    */
   readonly tokensPath: string
   /**
+   * Encrypts the token file at rest. Thirty-two bytes, base64.
+   *
+   * Required whenever OAuth is on, because that is the moment Brissa starts
+   * holding other people's credentials. Optional before it, so nobody has to
+   * generate a key for a feature they are not using.
+   */
+  readonly tokensKey: string
+  /**
    * Signs the OAuth `state`, and verifies Slack's own request signatures when
    * anything arrives over HTTP.
    *
@@ -124,7 +132,18 @@ function oauthFrom(env: Record<string, string | undefined>) {
   // The signing secret belongs in this list even though it is not an OAuth
   // credential: it is what signs the `state`, and a state signed with an empty
   // string is not signed at all. Anyone could then mint one.
-  if (!clientId || !clientSecret || !publicUrl || !env.SLACK_SIGNING_SECRET?.trim()) return undefined
+  // The encryption key belongs in this list for the same reason the signing
+  // secret does: the moment OAuth is on, Brissa holds credentials that are not
+  // its own, and storing those in the clear is not a thing to fall back to.
+  if (
+    !clientId ||
+    !clientSecret ||
+    !publicUrl ||
+    !env.SLACK_SIGNING_SECRET?.trim() ||
+    !env.BRISSA_TOKENS_KEY?.trim()
+  ) {
+    return undefined
+  }
   return { clientId, clientSecret, publicUrl: publicUrl.replace(/\/+$/, '') }
 }
 
@@ -167,6 +186,7 @@ export function readConfig(env: Record<string, string | undefined>): Configured 
       userToken: env.SLACK_USER_TOKEN?.trim() || undefined,
       enrolmentPath,
       tokensPath,
+      tokensKey: env.BRISSA_TOKENS_KEY?.trim() ?? '',
       signingSecret: env.SLACK_SIGNING_SECRET?.trim() ?? '',
       port: Number(env.PORT?.trim()) || 8080,
       oauth: oauthFrom(env),

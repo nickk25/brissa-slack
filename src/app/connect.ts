@@ -152,3 +152,33 @@ export async function disconnect(ports: ConnectPorts, who: OAuthState): Promise<
   await ports.tokens.forget(who.teamId, who.userId)
   return { revokedAtSlack: revoked.revoked }
 }
+
+/**
+ * Slack saying the credential is finished, in the words it actually uses.
+ *
+ * A closed list rather than a substring search, because "does this error
+ * mention auth" is the kind of test that starts matching things it should not.
+ * These four are what `conversations.history` answers with when the token is no
+ * longer usable — revoked from the person's own Slack settings, expired, or
+ * belonging to an app that was uninstalled.
+ */
+const DEAD_CREDENTIAL = new Set(['invalid_auth', 'token_revoked', 'token_expired', 'account_inactive'])
+
+export function isDeadCredential(detail: string): boolean {
+  return DEAD_CREDENTIAL.has(detail)
+}
+
+/**
+ * Drop a credential Slack has already stopped honouring.
+ *
+ * Without this, somebody who revokes Brissa in their own Slack settings is
+ * answered "could not read this channel" indefinitely, while a token nobody can
+ * use sits on disk — and the one action that would fix it is never suggested.
+ * Reacting to the failure is not as good as being told by Slack directly, and
+ * it is what covers the case that actually happens.
+ */
+export async function forgetIfDead(ports: ConnectPorts, who: OAuthState, detail: string): Promise<boolean> {
+  if (!isDeadCredential(detail)) return false
+  await ports.tokens.forget(who.teamId, who.userId)
+  return true
+}

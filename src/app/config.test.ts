@@ -115,8 +115,21 @@ test('INV-app-102 OAuth is configured wholly or not at all', async () => {
   const noSecret = readConfig({ ...complete, SLACK_CLIENT_ID: '1', SLACK_CLIENT_SECRET: 's', BRISSA_PUBLIC_URL: 'https://x.test' })
   assert.ok(noSecret.ok && noSecret.config.oauth === undefined, 'no signing secret is not a configuration')
 
+  // The encryption key counts too: OAuth being on is the moment Brissa starts
+  // holding credentials that are not its own, and storing those in the clear is
+  // not a thing to fall back to.
+  const noKey = readConfig({
+    ...complete,
+    SLACK_SIGNING_SECRET: 's',
+    SLACK_CLIENT_ID: '1',
+    SLACK_CLIENT_SECRET: 's',
+    BRISSA_PUBLIC_URL: 'https://x.test',
+  })
+  assert.ok(noKey.ok && noKey.config.oauth === undefined, 'no encryption key is not a configuration')
+
   const whole = readConfig({
     ...complete,
+    BRISSA_TOKENS_KEY: 'a'.repeat(44),
     SLACK_SIGNING_SECRET: 'a-signing-secret',
     SLACK_CLIENT_ID: '123.456',
     SLACK_CLIENT_SECRET: 'shh',

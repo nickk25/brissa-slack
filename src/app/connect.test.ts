@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Tokens, UserTokenRecord } from '../core/tokens.ts'
 import { signState, STATE_MAX_AGE_MS } from '../slack/oauth.ts'
-import { completeConnection, connectUrl, disconnect, type ConnectPorts } from './connect.ts'
+import { completeConnection, connectUrl, disconnect, forgetIfDead, type ConnectPorts } from './connect.ts'
 
 const SECRET = 'a-state-signing-secret'
 const NOW = 1_700_000_000_000
@@ -174,4 +174,36 @@ test('INV-app-101 disconnecting somebody who never connected is not an error', a
   const t = fakeTokens()
   const ports: ConnectPorts = { config, tokens: t.tokens, now: () => NOW }
   assert.deepEqual(await disconnect(ports, { teamId: 'T1', userId: 'U-nobody' }), { revokedAtSlack: false })
+})
+
+test('INV-app-107 a credential Slack has stopped honouring is dropped, not left on disk', async () => {
+  // Otherwise somebody who revoked Brissa in their own Slack settings is
+  // answered "could not read this channel" indefinitely, while a token nobody
+  // can use sits on the volume — and the one action that fixes it is never
+  // suggested to them.
+  const t = fakeTokens([{ teamId: 'T1', userId: 'U-nick', token: 'xoxp-dead' }])
+  const ports: ConnectPorts = { config, tokens: t.tokens, now: () => NOW }
+  const who = { teamId: 'T1', userId: 'U-nick' }
+
+  for (const dead of ['invalid_auth', 'token_revoked', 'token_expired', 'account_inactive']) {
+    await t.tokens.write({ teamId: 'T1', userId: 'U-nick', token: 'xoxp-dead' })
+    assert.equal(await forgetIfDead(ports, who, dead), true, dead)
+    assert.equal(await t.tokens.read('T1', 'U-nick'), undefined, dead)
+  }
+})
+
+test('INV-app-108 an ordinary read failure leaves the credential alone', async () => {
+  // A closed list rather than a substring search. "Does this error mention
+  // auth" is the kind of test that starts matching things it should not, and
+  // dropping a working token over a rate limit would log somebody out for
+  // being busy.
+  const t = fakeTokens([{ teamId: 'T1', userId: 'U-nick', token: 'xoxp-fine' }])
+  const ports: ConnectPorts = { config, tokens: t.tokens, now: () => NOW }
+  const who = { teamId: 'T1', userId: 'U-nick' }
+
+  for (const alive of ['ratelimited', 'http_500', 'transport: network', 'channel_not_found', 'not_in_channel']) {
+    assert.equal(await forgetIfDead(ports, who, alive), false, alive)
+  }
+  assert.deepEqual(t.forgotten, [])
+  assert.ok(await t.tokens.read('T1', 'U-nick'))
 })

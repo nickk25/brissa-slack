@@ -10,6 +10,7 @@
  * It is also the only file that reads `process.env`.
  */
 
+import { randomBytes } from 'node:crypto'
 import { argv } from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { defaultTranslator } from '../llm/decide.ts'
@@ -19,6 +20,7 @@ import { readEnrolCommand } from '../slack/enrol.ts'
 import { replyPrivately } from '../slack/shortcut.ts'
 import { createSlackHistory, whoOwns } from '../slack/history.ts'
 import { readShortcut } from '../slack/shortcut.ts'
+import { noticeText, renderNotice } from '../core/render.ts'
 import { createSlackApi } from '../slack/web.ts'
 import { createFileEnrolment } from '../store/enrolment.ts'
 import { createFileTokens } from '../store/tokens.ts'
@@ -27,7 +29,7 @@ import { createMemorySeen } from '../store/seen.ts'
 import { readConfig } from './config.ts'
 import { handleCommand, refuseCommand } from './command.ts'
 import { ENROL_COMMAND, handleEnrol } from './enrol.ts'
-import { completeConnection, connectUrl, disconnect, type ConnectPorts } from './connect.ts'
+import { completeConnection, connectUrl, disconnect, forgetIfDead, type ConnectPorts } from './connect.ts'
 import { startServer } from './server.ts'
 import { handleShortcut } from './shortcut.ts'
 import { describe } from './report.ts'
@@ -92,7 +94,7 @@ export async function main(): Promise<void> {
   // survives if it is on a volume. Everything else Brissa knows — who has been
   // seen, what a channel's policy is — is still memory and still goes.
   const enrolment = createFileEnrolment(config.enrolmentPath)
-  const tokens = createFileTokens(config.tokensPath)
+  const tokens = createFileTokens(config.tokensPath, config.tokensKey || randomBytes(32).toString('base64'))
 
   // Absent is a working state, and the whole flow is off rather than half on.
   // `readConfig` already refuses a partial configuration for the same reason: a
@@ -115,7 +117,7 @@ export async function main(): Promise<void> {
         }
 
   if (connecting === undefined) {
-    console.log('  /brissa connect  off — SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, BRISSA_PUBLIC_URL and SLACK_SIGNING_SECRET are needed together')
+    console.log('  /brissa connect  off — SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, BRISSA_PUBLIC_URL, SLACK_SIGNING_SECRET and BRISSA_TOKENS_KEY are needed together')
   } else {
     const running = await startServer(
       {
@@ -226,6 +228,22 @@ export async function main(): Promise<void> {
             : { history: createSlackHistory(mine.token), historyOwner: read.command.invokedBy }
 
         const outcome = await handleCommand({ ...work.ports, ...theirs }, read.command)
+
+        // Slack has stopped honouring this person's token — revoked from their
+        // own settings, or expired. Dropped here rather than left on disk, so
+        // the next `/translate` tells them to reconnect instead of repeating a
+        // read failure that will never clear on its own.
+        if (outcome.kind === 'history-failed' && connecting !== undefined && mine !== undefined) {
+          const dropped = await forgetIfDead(connecting, { teamId: read.command.teamId, userId: read.command.invokedBy }, outcome.detail)
+          if (dropped) {
+            await replyPrivately(read.command.responseUrl, {
+              blocks: renderNotice('reconnect-needed'),
+              text: noticeText('reconnect-needed'),
+            })
+            console.log(`  ${read.command.channelId}  /translate  credential dropped: ${outcome.detail}`)
+            return
+          }
+        }
         const what = outcome.kind === 'noticed' ? `noticed:${outcome.notice}` : outcome.kind
         const why = 'detail' in outcome ? ` — ${outcome.detail}` : ''
         console.log(`  ${read.command.channelId}  /translate  ${what}${why}`)

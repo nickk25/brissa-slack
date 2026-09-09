@@ -301,6 +301,7 @@ callback that cannot complete, so `readConfig` treats "some of them" as none.
 And one that is not a secret but must be set anyway:
 
 | `BRISSA_TOKENS_PATH` | **`/data/tokens.json`** |
+| `BRISSA_TOKENS_KEY` | `openssl rand -base64 32` — 32 bytes, base64 |
 | --- | --- |
 
 **It defaults to `data/tokens.json`, which on Fly is inside the container and
@@ -322,12 +323,20 @@ flow is refused, with an error that reads like something else — which is why
 
 ## What is still true about what this does not do
 
-The tokens file is `0600` on an encrypted volume and is **not encrypted at
-rest** by Brissa itself. That is the only barrier, and it is written down here
-rather than assumed.
+The tokens file is encrypted at rest with `BRISSA_TOKENS_KEY`, AES-256-GCM, on
+top of `0600` and Fly's own volume encryption. Be exact about what that buys: a
+snapshot, a backup, or a copy of the file taken without the environment is
+noise. It buys **nothing** against anything that compromises the running
+process, which holds the key by definition.
 
-There is no handling of `tokens_revoked` or `app_uninstalled`. Somebody who
-revokes Brissa from their own Slack settings leaves a dead token on disk, and
-`/translate` answers them "could not read this channel" indefinitely with no
-hint to reconnect.
+The key must live in the environment and never on the volume — `fly secrets set`
+does exactly that. Losing it means every connected person has to run `/brissa
+connect` again; nothing is recoverable from the file without it, which is the
+point.
+
+A credential Slack has stopped honouring — revoked from somebody's own Slack
+settings, or expired — is dropped the next time it fails, and that person is
+told to reconnect. There is still no subscription to Slack's own
+`tokens_revoked` or `app_uninstalled` events, so this is noticed on next use
+rather than immediately.
 

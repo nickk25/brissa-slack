@@ -224,4 +224,15 @@ a credential leaks into a log nobody meant to write one to.
   failed to parse. `test: INV-store-31`
 - Nothing here writes to `console.log`, `console.warn` or `console.error`,
   across a write, a read, a delete, and a corrupt read. `test: INV-store-32`
+- A token taken off the disk without the key is noise. `0600` on an encrypted
+  volume already stops another process on the box; it does not stop a snapshot,
+  a backup, or a copy taken by anything that could read the file — and those
+  travel. The key lives in the environment and never on the volume. It buys
+  nothing against something that compromises the running process, which has the
+  key by definition. `test: INV-store-33`
+- A file edited by hand fails to open rather than opening wrong. A store that
+  returns a mangled token silently is worse than one that refuses.
+  `test: INV-store-34`
+- A key that is not a key is refused rather than stretched: a short key quietly
+  padded produces a file that looks encrypted and is not. `test: INV-store-35`
 

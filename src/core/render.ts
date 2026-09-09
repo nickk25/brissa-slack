@@ -263,6 +263,7 @@ export type Notice =
   | 'nobody-knows-you'
   | 'translation-failed'
   | 'not-your-account'
+  | 'reconnect-needed'
   | 'cannot-read-here'
 
 const NOTICES: Record<Notice, string> = {
@@ -285,6 +286,12 @@ const NOTICES: Record<Notice, string> = {
   // Slack refused the read: a rate limit, an expired token, a channel that
   // account is not in. Named rather than swallowed, because from the outside it
   // is indistinguishable from Brissa being broken.
+  // Told apart from a generic read failure on purpose. Somebody who revoked
+  // Brissa in their own Slack settings, or whose token simply expired, would
+  // otherwise be answered "could not read this channel" forever with nothing
+  // suggesting the one thing that fixes it.
+  'reconnect-needed':
+    'Your Slack authorisation is no longer valid — it may have been revoked or expired. Run `/brissa connect` to grant it again.',
   'cannot-read-here': 'Could not read this channel. The shortcut on a single message still works.',
 }
 

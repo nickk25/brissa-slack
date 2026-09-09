@@ -21,6 +21,7 @@
  * `src/app/main.ts` reads the environment.
  */
 
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -69,7 +70,44 @@ const FILE_MODE = 0o600
  * the kind of place they leak into a log nobody meant to write one to. Only
  * the path is safe to say out loud.
  */
-async function readAll(path: string): Promise<OnDisk> {
+/**
+ * Encrypted at rest, and it is worth being exact about what that buys.
+ *
+ * The file is `0600` on a volume Fly encrypts, which already stops another
+ * process on the box and anyone reading the disk. What it does not stop is a
+ * volume snapshot, a backup, or a copy of the file taken by anything that can
+ * read it — and those travel. A key that lives in the environment and never on
+ * the volume means a file taken without the environment is a file of noise.
+ *
+ * It does **not** protect against anything that compromises the running
+ * process: that has the key by definition. Nobody should read this and think
+ * otherwise, which is why it is written here rather than in a release note.
+ *
+ * AES-256-GCM, a fresh nonce per write, and the tag verified on read — so a
+ * file edited by hand fails to decrypt rather than decrypting to something
+ * else.
+ */
+interface Sealed {
+  readonly v: 1
+  readonly iv: string
+  readonly tag: string
+  readonly body: string
+}
+
+function seal(key: Buffer, plain: string): Sealed {
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', key, iv)
+  const body = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
+  return { v: 1, iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), body: body.toString('base64') }
+}
+
+function unseal(key: Buffer, sealed: Sealed): string {
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(sealed.iv, 'base64'))
+  decipher.setAuthTag(Buffer.from(sealed.tag, 'base64'))
+  return Buffer.concat([decipher.update(Buffer.from(sealed.body, 'base64')), decipher.final()]).toString('utf8')
+}
+
+async function readAll(path: string, key: Buffer): Promise<OnDisk> {
   let raw: string
   try {
     raw = await readFile(path, 'utf8')
@@ -78,10 +116,20 @@ async function readAll(path: string): Promise<OnDisk> {
     throw err
   }
 
+  let sealed: Sealed
   try {
-    return JSON.parse(raw) as OnDisk
+    sealed = JSON.parse(raw) as Sealed
   } catch {
     throw new Error(`Corrupt token store at ${path}`)
+  }
+
+  try {
+    return JSON.parse(unseal(key, sealed)) as OnDisk
+  } catch {
+    // The key changed, or the file was tampered with, and from here the two are
+    // indistinguishable — which is the point of the tag. Named by path only:
+    // whatever is in there stays in there.
+    throw new Error(`Token store at ${path} could not be decrypted`)
   }
 }
 
@@ -99,12 +147,13 @@ async function readAll(path: string): Promise<OnDisk> {
  * between, and the whole point of this function is that a crash mid-write
  * must never produce a file anyone but this process can read.
  */
-async function writeAll(path: string, contents: OnDisk): Promise<void> {
+async function writeAll(path: string, contents: OnDisk, key: Buffer): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   // Unique per call so two writes racing in the same process never share a
   // temporary file and clobber each other before either gets to rename.
   const tmp = `${path}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
-  await writeFile(tmp, JSON.stringify(contents, null, 2), { encoding: 'utf8', mode: FILE_MODE })
+  const sealed = seal(key, JSON.stringify(contents))
+  await writeFile(tmp, JSON.stringify(sealed, null, 2), { encoding: 'utf8', mode: FILE_MODE })
   // Belt and braces: `writeFile`'s `mode` only applies when it creates the
   // file, so a leftover temp path from a previous run with a different mode
   // would otherwise survive. Renaming preserves whatever mode is on the file
@@ -118,12 +167,20 @@ async function writeAll(path: string, contents: OnDisk): Promise<void> {
  * memory — the same discipline `enrolment.ts` states: the same question
  * asked twice must get the same answer.
  */
-export function createFileTokens(path: string): Tokens {
+export function createFileTokens(path: string, keyMaterial: string): Tokens {
+  // Thirty-two bytes, and refused rather than padded. A short key silently
+  // stretched is a file that looks encrypted and is not, and nothing later
+  // would ever say so.
+  const secretKey = Buffer.from(keyMaterial, 'base64')
+  if (secretKey.length !== 32) {
+    throw new Error('BRISSA_TOKENS_KEY must be 32 bytes, base64 encoded — generate one with: openssl rand -base64 32')
+  }
+
   let writes: Promise<void> = Promise.resolve()
 
   return {
     async read(teamId: string, userId: string): Promise<UserTokenRecord | undefined> {
-      const all = await readAll(path)
+      const all = await readAll(path, secretKey)
       return all[key(teamId, userId)]
     },
 
@@ -139,12 +196,12 @@ export function createFileTokens(path: string): Tokens {
       // machines writing the same file would need a lock, and this is the
       // line that has to change when there are two.
       writes = writes.then(async () => {
-        const all = await readAll(path)
+        const all = await readAll(path, secretKey)
         // Read-modify-write, not overwrite-with-one-row: everybody else
         // already on file has to survive a write that is about somebody
         // else entirely.
         all[key(record.teamId, record.userId)] = record
-        await writeAll(path, all)
+        await writeAll(path, all, secretKey)
       })
       return writes
     },
@@ -155,9 +212,9 @@ export function createFileTokens(path: string): Tokens {
       // were actually called, not in whatever order two independent queues
       // happened to schedule them.
       writes = writes.then(async () => {
-        const all = await readAll(path)
+        const all = await readAll(path, secretKey)
         delete all[key(teamId, userId)]
-        await writeAll(path, all)
+        await writeAll(path, all, secretKey)
       })
       return writes
     },

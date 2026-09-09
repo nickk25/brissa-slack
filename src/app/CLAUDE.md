@@ -611,4 +611,12 @@ revoking it failed* is the worst of the three outcomes.
 - A request Node cannot even parse is refused at the socket, before `respond` is
   reached. Node's default is survivable but is not ours to rely on.
   `test: INV-app-106`
+- A credential Slack has stopped honouring is dropped, not left on disk.
+  Somebody who revoked Brissa in their own settings would otherwise be answered
+  "could not read this channel" indefinitely, while a token nobody can use sits
+  on the volume and the one action that fixes it is never suggested.
+  `test: INV-app-107`
+- An ordinary read failure leaves the credential alone. A closed list rather
+  than a substring search: dropping a working token over a rate limit would log
+  somebody out for being busy. `test: INV-app-108`
 
