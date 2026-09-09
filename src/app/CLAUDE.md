@@ -395,3 +395,32 @@ And nothing counts anything. `report` prints a line to a terminal.
 - An unverified account is refused too. `test: INV-app-69`
 - Text you hand over needs no account at all. `test: INV-app-70`
 
+## Streaming, and the two things that make it safe
+
+A `/translate 5` used to be twenty seconds of nothing followed by everything.
+Now each translation goes out as it is ready — but only under two rules, and
+both exist because getting them wrong is worse than not streaming at all.
+
+**Nothing overtakes anything.** A conversation read out of sequence is not a
+conversation. A finished translation waits for every earlier one, so if the
+first, second and fourth are done, the first two go out and the fourth waits for
+the third. Only a contiguous prefix is ever emitted.
+
+**One answer is always held back.** `response_url` accepts five. A stream that
+spent all five on progress would have nothing left to deliver the remainder, and
+the tail would vanish with nothing saying so. Four go out as the conversation
+fills in; the fifth carries whatever is left, however much that is.
+
+A third rule fell out of building it, and it was a real defect for one commit: a
+failure that lands *after* everything before it has already been sent has nothing
+to ride along with. It is reported on its own rather than dropped — from the
+outside, a missing translation and a translation nobody attempted look identical.
+
+Translations run four at a time. That is not a throughput knob: it is the ceiling
+on how many model calls one person's command can have in flight, and twenty of
+those fired together is a self-inflicted rate limit.
+
+- A later message never overtakes an earlier one. `test: INV-app-71`
+- What is ready goes out without waiting for what is not. `test: INV-app-72`
+- The last answer is reserved, so a tail can never be dropped. `test: INV-app-73`
+

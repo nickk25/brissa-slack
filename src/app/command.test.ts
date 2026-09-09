@@ -4,6 +4,7 @@ import type { HistoryRead } from '../core/history.ts'
 import type { Reader } from '../core/ports.ts'
 import type { TranslationResult, Translator } from '../core/translator.ts'
 import type { Argument, SlashCommand } from '../slack/command.ts'
+import { RESPONSE_URL_BUDGET } from '../slack/shortcut.ts'
 import { createMemoryDirectory } from '../store/memory.ts'
 import { handleCommand, TRANSLATE_COMMAND, type CommandPorts } from './command.ts'
 
@@ -127,8 +128,13 @@ test('INV-app-58 a translation failure among several successes stays visible, ne
   const outcome = await handleCommand(w.ports, command({ kind: 'count', count: 2 }))
 
   assert.deepEqual(outcome, { kind: 'translated', count: 1 })
-  assert.equal(w.sent.length, 1)
-  assert.ok(w.sent[0]?.text.includes('worth trying again'))
+  // Wherever it lands. Streaming means the successes may already be gone by the
+  // time the failure is known, so what matters is that it is said at all — not
+  // that it rides along with them.
+  assert.ok(
+    w.sent.some((m) => m.text.includes('worth trying again')),
+    `no failure reported across ${w.sent.length} message(s)`,
+  )
 
   // And when every message in the batch fails, the reply is the failure
   // notice itself rather than an empty success.
@@ -278,4 +284,90 @@ test('INV-app-70 text you hand over needs no account at all', async () => {
     command({ kind: 'literal', text: 'Guten Morgen zusammen' }),
   )
   assert.deepEqual(outcome, { kind: 'translated', count: 1 })
+})
+
+/** Ports whose translations finish exactly when the test says they do. */
+function staged(texts: readonly string[]) {
+  const sent: { blocks: readonly unknown[]; text: string }[] = []
+  const release = new Map<string, () => void>()
+  const gates = new Map<string, Promise<void>>()
+  for (const t of texts) gates.set(t, new Promise<void>((r) => release.set(t, r)))
+
+  const ports: CommandPorts = {
+    directory: createMemoryDirectory({ readers: [nick] }),
+    translator: {
+      async translate(request) {
+        await gates.get(request.text)
+        return { kind: 'translated', translation: { text: `[${request.text}]`, foundLanguages: ['de'] } }
+      },
+    },
+    // Newest first, the way Slack answers — `gatherSources` reverses it, so the
+    // conversation arrives oldest first and `texts` reads in that order here.
+    history: {
+      async read() {
+        return { ok: true, messages: [...texts].reverse().map((text) => ({ authorId: 'U-jens', text })) }
+      },
+    },
+    historyOwner: 'U-nick',
+    send: async (_url, r) => {
+      sent.push({ blocks: r.blocks, text: r.text })
+      return { ok: true }
+    },
+  }
+  const finish = (t: string) => {
+    release.get(t)?.()
+    return new Promise((r) => setTimeout(r, 0))
+  }
+  return { ports, sent, finish }
+}
+
+const shown = (sent: readonly { blocks: readonly unknown[] }[]) =>
+  sent.flatMap((m) => JSON.stringify(m.blocks).match(/\[[a-z]+\]/g) ?? [])
+
+test('INV-app-71 a later message never overtakes an earlier one', async () => {
+  // The whole risk of streaming. A conversation read out of sequence is not a
+  // conversation, so a finished translation waits for every earlier one.
+  const s = staged(['uno', 'dos', 'tres'])
+  const running = handleCommand(s.ports, command({ kind: 'count', count: 3 }))
+
+  // The third finishes first, and must go nowhere.
+  await s.finish('tres')
+  assert.deepEqual(s.sent, [])
+
+  // The second too. Still nothing: the first is holding the line.
+  await s.finish('dos')
+  assert.deepEqual(s.sent, [])
+
+  await s.finish('uno')
+  await running
+  assert.deepEqual(shown(s.sent), ['[uno]', '[dos]', '[tres]'])
+})
+
+test('INV-app-72 what is ready goes out without waiting for what is not', async () => {
+  // The point of streaming: the first translation appears while the last is
+  // still running, instead of twenty seconds of nothing.
+  const s = staged(['uno', 'dos'])
+  const running = handleCommand(s.ports, command({ kind: 'count', count: 2 }))
+
+  await s.finish('uno')
+  assert.deepEqual(shown(s.sent), ['[uno]'], 'the first should already be out')
+
+  await s.finish('dos')
+  await running
+  assert.deepEqual(shown(s.sent), ['[uno]', '[dos]'])
+})
+
+test('INV-app-73 the last answer is reserved, so a tail can never be dropped', async () => {
+  // `response_url` accepts five. A stream that spends all five on progress has
+  // no way to deliver whatever is left, and the tail would vanish with nothing
+  // saying so. Four go out as it fills in; the fifth carries the remainder.
+  const texts = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+  const s = staged(texts)
+  const running = handleCommand(s.ports, command({ kind: 'count', count: texts.length }))
+
+  for (const t of texts) await s.finish(t)
+  await running
+
+  assert.ok(s.sent.length <= RESPONSE_URL_BUDGET.responses, `spent ${s.sent.length} answers`)
+  assert.deepEqual(shown(s.sent), texts.map((t) => `[${t}]`))
 })
