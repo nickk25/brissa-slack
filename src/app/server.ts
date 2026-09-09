@@ -128,7 +128,17 @@ async function respond(routes: Routes, req: IncomingMessage, res: ServerResponse
     try {
       const result = await routes.callback(queryOf(url.searchParams))
       return send(res, result.status, result.body)
-    } catch {
+    } catch (err) {
+      // The one place a store write can fail with nobody watching. Without this
+      // line a failing `tokens.write` — EACCES on the volume, ENOSPC, a wedged
+      // queue — produced no output at all: the person in the browser was told
+      // to try again, trying again failed identically, and on Fly there is no
+      // alerting to notice any of it.
+      //
+      // The name only, never the request: `code` and `state` are on that URL
+      // and neither belongs in a log. That is INV-app-93, and it is why this is
+      // a fixed string rather than the error's message.
+      console.error(`oauth callback failed: ${(err as Error)?.name || 'Error'}`)
       return send(res, 500, CALLBACK_FAILED)
     }
   }

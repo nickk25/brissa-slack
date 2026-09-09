@@ -301,3 +301,37 @@ test('INV-app-106 a request Node cannot even parse is refused, and the process s
     await running.close()
   }
 })
+
+test('INV-app-112 a callback that throws says so on the console, without saying what the request was', async () => {
+  // The one place a store write can fail with nobody watching. `tokens.write`
+  // failing — EACCES on the volume, ENOSPC — produced no output whatsoever:
+  // the browser was told to try again, trying again failed identically, and
+  // there is no alerting on Fly to notice either.
+  //
+  // The name only. `code` and `state` are on that URL and INV-app-93 keeps
+  // them off the console, which is why this asserts on what is *not* there as
+  // firmly as on what is.
+  const { routes } = fakes({
+    async callback() {
+      throw Object.assign(new Error('EACCES: permission denied, open /data/tokens.json'), { name: 'TokenStoreUnwritable' })
+    },
+  })
+
+  const original = console.error
+  const seen: string[] = []
+  console.error = (...args: unknown[]) => void seen.push(args.map(String).join(' '))
+
+  let response: Response
+  try {
+    response = await withServer(routes, (port) => get(port, '/oauth/callback?code=super-secret-oauth-code&state=xyz'))
+  } finally {
+    console.error = original
+  }
+
+  assert.equal(response.status, 500)
+  assert.equal(seen.length, 1, 'exactly one line: silence is the bug, and a flood is the next one')
+  assert.ok(seen[0]?.includes('TokenStoreUnwritable'), seen[0] ?? 'nothing was logged at all')
+  assert.ok(!seen[0]?.includes('super-secret-oauth-code'), 'the code must never reach a log')
+  assert.ok(!seen[0]?.includes('xyz'), 'nor the state')
+  assert.ok(!seen[0]?.includes('/data/tokens.json'), 'the message can carry a path; the name cannot')
+})

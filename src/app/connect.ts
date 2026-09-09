@@ -89,7 +89,20 @@ export function connectUrl(ports: ConnectPorts, who: OAuthState): string {
  */
 export type Connected =
   | { readonly kind: 'connected'; readonly teamId: string; readonly userId: string }
-  | { readonly kind: 'refused'; readonly because: 'no-code' | 'bad-state' | 'expired-state' | 'wrong-account' | 'exchange-failed' }
+  | {
+      readonly kind: 'refused'
+      readonly because: 'no-code' | 'bad-state' | 'expired-state' | 'wrong-account' | 'exchange-failed'
+      /**
+       * What Slack said, when it was Slack that refused.
+       *
+       * Only ever a closed word from `exchangeCode` — `bad_redirect_uri`,
+       * `invalid_client_id`, `http_5xx`, `transport: network` — never anything
+       * from the request. Without it the commonest setup mistake there is, a
+       * redirect URL that does not match what Slack's app settings hold, reads
+       * in the log exactly like a Slack outage.
+       */
+      readonly detail?: string
+    }
 
 export interface CallbackQuery {
   readonly code?: string | undefined
@@ -119,7 +132,7 @@ export async function completeConnection(ports: ConnectPorts, query: CallbackQue
     },
     ports.fetchImpl,
   )
-  if (!exchanged.ok) return { kind: 'refused', because: 'exchange-failed' }
+  if (!exchanged.ok) return { kind: 'refused', because: 'exchange-failed', detail: exchanged.detail }
 
   // Slack has just said whose consent this is; the state said whose flow it was
   // meant to be. If they differ, somebody has been walked through an

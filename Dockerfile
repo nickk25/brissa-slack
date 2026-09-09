@@ -37,9 +37,11 @@ USER node
 
 ENV NODE_ENV=production
 
-# No EXPOSE, and none of Fly's health-check machinery is configured to point
-# at anything. Brissa opens a websocket *outward* to Slack (Socket Mode,
-# see src/slack/socket.ts) and listens on no port and accepts no inbound
-# HTTP — there is nothing here for a health check to reach. See
-# docs/DEPLOY.md for how to tell, from the logs, that it is actually up.
+# No EXPOSE, which is a smaller claim than it used to be. Brissa still opens
+# its websocket *outward* to Slack (Socket Mode, see src/slack/socket.ts), but
+# per-user OAuth means Slack now redirects a browser back to a URL this app
+# owns, so src/app/server.ts genuinely listens on a port — fly.toml names it,
+# and the health check at /healthz reaches it. EXPOSE is left out because it
+# documents rather than publishes: fly.toml's internal_port is what actually
+# decides. See docs/DEPLOY.md for how to tell that it is up.
 CMD ["npm", "start"]

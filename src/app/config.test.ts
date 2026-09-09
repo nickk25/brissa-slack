@@ -166,3 +166,26 @@ test('INV-app-103 credentials and preferences are kept in different files', asyn
   assert.ok(apart.ok)
   assert.notEqual(apart.config.tokensPath, apart.config.enrolmentPath)
 })
+
+test('INV-app-111 a key that is set and wrong is a problem, not a stack trace', async () => {
+  // `createFileTokens` throws on a bad key, and it is called from the
+  // composition root outside any handler. So a mistyped BRISSA_TOKENS_KEY
+  // printed the config banner, then an uncaught exception, and Fly's
+  // `restart = always` turned that into a loop. The message was legible in the
+  // trace, but this is exactly the class of mistake `readConfig` exists to
+  // collect — somebody doing setup for the first time, pasting by hand.
+  const short = readConfig({ ...complete, BRISSA_TOKENS_KEY: 'dG9vLXNob3J0' })
+  assert.ok(!short.ok)
+  assert.ok(
+    short.problems.some((p) => p.includes('BRISSA_TOKENS_KEY')),
+    'the problem has to name the variable somebody has to go and fix',
+  )
+
+  // 44 characters of 'a' decodes to 33 bytes, not 32 — the near miss that a
+  // length check on the string rather than the bytes would wave through.
+  assert.ok(!readConfig({ ...complete, BRISSA_TOKENS_KEY: 'a'.repeat(44) }).ok)
+
+  // Absent is not wrong: it means OAuth is off, which is a working state.
+  assert.ok(readConfig(complete).ok)
+  assert.ok(readConfig({ ...complete, BRISSA_TOKENS_KEY: randomBytes(32).toString('base64') }).ok)
+})

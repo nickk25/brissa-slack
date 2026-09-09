@@ -12,6 +12,7 @@
  */
 
 import type { ChannelPolicy, Reader } from '../core/ports.ts'
+import { tokensKeyProblem } from '../store/tokens.ts'
 
 export interface Config {
   readonly botToken: string
@@ -174,6 +175,18 @@ export function readConfig(env: Record<string, string | undefined>): Configured 
     problems.push('BRISSA_TOKENS_PATH and BRISSA_ENROLMENT_PATH point at the same file — credentials and preferences are kept apart')
   }
 
+  // A key that is set and wrong belongs in this list, not in a stack trace.
+  // `createFileTokens` throws on it, and it is called from the composition root
+  // outside any handler — so a mistyped key printed the config banner, then an
+  // uncaught exception, and Fly's `restart = always` made a loop of it. An
+  // empty key is not a problem: it means OAuth is off, which `oauthFrom`
+  // already treats as a working state.
+  const tokensKey = env.BRISSA_TOKENS_KEY?.trim() ?? ''
+  if (tokensKey !== '') {
+    const keyProblem = tokensKeyProblem(tokensKey)
+    if (keyProblem !== undefined) problems.push(keyProblem)
+  }
+
   const channels = readChannels(env.BRISSA_CHANNELS ?? '')
 
   if (problems.length > 0) return { ok: false, problems }
@@ -186,7 +199,7 @@ export function readConfig(env: Record<string, string | undefined>): Configured 
       userToken: env.SLACK_USER_TOKEN?.trim() || undefined,
       enrolmentPath,
       tokensPath,
-      tokensKey: env.BRISSA_TOKENS_KEY?.trim() ?? '',
+      tokensKey,
       signingSecret: env.SLACK_SIGNING_SECRET?.trim() ?? '',
       port: Number(env.PORT?.trim()) || 8080,
       oauth: oauthFrom(env),

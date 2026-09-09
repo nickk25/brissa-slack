@@ -136,9 +136,36 @@ test('INV-app-98 nothing is stored when Slack refuses the exchange', async () =>
 
   assert.deepEqual(
     await completeConnection(w.ports, { code: 'c', state: signState(SECRET, { teamId: 'T1', userId: 'U-nick' }, NOW) }),
-    { kind: 'refused', because: 'exchange-failed' },
+    { kind: 'refused', because: 'exchange-failed', detail: 'invalid_code' },
   )
   assert.equal(w.rows.size, 0)
+})
+
+test('INV-app-113 a refusal carries what Slack said, so one setup mistake is not read as an outage', async () => {
+  // `refused:exchange-failed` was all the log ever got. A redirect URL that
+  // does not match what Slack's app settings hold — the commonest mistake
+  // there is when setting this up, and the one the operator can actually fix —
+  // read exactly like Slack being down, which they cannot.
+  const detailed = (detail: string) =>
+    (async () => ({ ok: true, status: 200, json: async () => ({ ok: false, error: detail }) })) as unknown as typeof fetch
+
+  for (const detail of ['bad_redirect_uri', 'invalid_client_id', 'invalid_code']) {
+    const w = wire({ fetchImpl: detailed(detail) })
+    const outcome = await completeConnection(w.ports, {
+      code: 'c',
+      state: signState(SECRET, { teamId: 'T1', userId: 'U-nick' }, NOW),
+    })
+    assert.deepEqual(outcome, { kind: 'refused', because: 'exchange-failed', detail })
+  }
+
+  // Only the exchange has anything to say. A refusal Brissa reached on its own
+  // knows why from `because` alone, and inventing a detail for it would be
+  // saying Slack answered when Slack was never asked.
+  const w = wire()
+  assert.deepEqual(await completeConnection(w.ports, { code: 'a-code' }), {
+    kind: 'refused',
+    because: 'bad-state',
+  })
 })
 
 test('INV-app-99 the link carries the identity of whoever asked for it', async () => {
@@ -216,7 +243,7 @@ test('INV-app-109 disconnecting tells Slack, and says so only when Slack agreed'
   // "disconnect revokes" was asserted only in the case where it does not. The
   // difference is what the person is told — one message says their access is
   // withdrawn, the other says to go and check.
-  let revoked: { url?: string; auth?: string } = {}
+  let revoked: { url?: string; auth?: string | undefined } = {}
   const agrees = (async (url: string, init: RequestInit) => {
     revoked = { url, auth: (init.headers as Record<string, string>)?.authorization }
     return { ok: true, status: 200, json: async () => ({ ok: true, revoked: true }) }

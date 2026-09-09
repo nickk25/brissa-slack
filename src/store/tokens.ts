@@ -202,14 +202,28 @@ export class TokenStoreUnreadable extends Error {
   }
 }
 
+/**
+ * What is wrong with a key, in a sentence, or nothing if it is fine.
+ *
+ * Exported so `src/app/config.ts` can ask the same question at startup and get
+ * the same answer. Two copies of "is this key valid" would eventually disagree,
+ * and the copy that lost would be the one deciding whether a process starts.
+ *
+ * Thirty-two bytes, and refused rather than padded. A short key silently
+ * stretched is a file that looks encrypted and is not, and nothing later would
+ * ever say so.
+ */
+export function tokensKeyProblem(keyMaterial: string): string | undefined {
+  if (Buffer.from(keyMaterial, 'base64').length === 32) return undefined
+  return 'BRISSA_TOKENS_KEY must be 32 bytes, base64 encoded — generate one with: openssl rand -base64 32'
+}
+
 export function createFileTokens(path: string, keyMaterial: string): Tokens {
-  // Thirty-two bytes, and refused rather than padded. A short key silently
-  // stretched is a file that looks encrypted and is not, and nothing later
-  // would ever say so.
+  // Kept here as well as in `readConfig`, because this is a function anybody
+  // can call directly and a store built on a bad key must not exist at all.
+  const problem = tokensKeyProblem(keyMaterial)
+  if (problem !== undefined) throw new Error(problem)
   const secretKey = Buffer.from(keyMaterial, 'base64')
-  if (secretKey.length !== 32) {
-    throw new Error('BRISSA_TOKENS_KEY must be 32 bytes, base64 encoded — generate one with: openssl rand -base64 32')
-  }
 
   let writes: Promise<void> = Promise.resolve()
 

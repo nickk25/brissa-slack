@@ -149,7 +149,12 @@ export async function main(): Promise<void> {
         start: () => ({ location: 'https://slack.com' }),
         callback: async (query) => {
           const done = await completeConnection(connecting, query)
-          console.log(`  oauth callback  ${done.kind === 'connected' ? 'connected' : `refused:${done.because}`}`)
+          // The detail when there is one, because `refused:exchange-failed`
+          // alone cannot tell a mistyped redirect URL from a Slack outage, and
+          // those want opposite reactions. It is a closed word from Slack, not
+          // anything off the request.
+          const why = done.kind === 'connected' ? 'connected' : `refused:${done.because}${done.detail === undefined ? '' : ` (${done.detail})`}`
+          console.log(`  oauth callback  ${why}`)
           return done.kind === 'connected'
             ? { status: 200, body: 'Connected. You can close this tab and go back to Slack.' }
             : { status: 400, body: 'That did not work. Go back to Slack and run /brissa connect again.' }

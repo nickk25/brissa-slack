@@ -539,6 +539,11 @@ assumes nothing about either beyond the shape of `Routes` itself.
   keep-alive connection nobody ended explicitly. `test: INV-app-92`
 - Nothing about a callback request reaches the console, code and state
   included. `test: INV-app-93`
+- A callback that throws says so on the console — the error's name and nothing
+  else. Without it a failing `tokens.write` produced no output at all: the
+  browser was told to try again, trying again failed identically, and there is
+  no alerting on Fly to notice either. The name only, because the rule above
+  still holds. `test: INV-app-112`
 
 ## Connecting an account, and the one line the flow rests on
 
@@ -596,6 +601,11 @@ revoking it failed* is the worst of the three outcomes.
 - Credentials and preferences are kept in different files, so tidiness cannot
   put a bearer token wherever a language preference is convenient to read.
   `test: INV-app-103`
+- A `BRISSA_TOKENS_KEY` that is set and wrong is collected as a problem like
+  any other, not thrown from the composition root. It used to print the config
+  banner and then an uncaught stack trace, which `restart = always` turned into
+  a loop. An empty key stays a working state: it means OAuth is off.
+  `test: INV-app-111`
 - A request target Node accepts and `URL` refuses does not take the process
   down. Node's HTTP parser is more permissive than WHATWG URL and this port is
   public; `GET http://[::1 HTTP/1.1` threw where nothing awaited it, and the
@@ -626,4 +636,10 @@ revoking it failed* is the worst of the three outcomes.
 - A callback with no state is refused before anything is exchanged. Slack always
   sends one back, so this fires only for a request somebody made up — which is
   exactly the request that must not reach an exchange. `test: INV-app-110`
+- A refusal that came from the exchange carries what Slack said. `bad_redirect_uri`
+  — a redirect URL that does not match app settings, the commonest setup mistake
+  there is and one the operator can fix — otherwise reads in the log exactly
+  like a Slack outage, which they cannot. Only the exchange has anything to add:
+  a refusal Brissa reached on its own knows why from `because` alone.
+  `test: INV-app-113`
 
