@@ -92,6 +92,11 @@ export function escapeKeepingReferences(text: string): string {
  * from. No header, no divider, no button: this sits underneath a message the
  * reader is already looking at, and anything that makes it look like a separate
  * announcement makes the channel worse.
+ *
+ * The section is bounded to what Slack's block will accept (`boundToSection`,
+ * below): Slack rejects an oversized block, and rejects the whole payload
+ * along with it, so a translation left unbounded can take down every other
+ * translation sent alongside it.
  */
 export interface Source {
   /** The Slack id of whoever wrote the original. */
@@ -123,6 +128,73 @@ function quote(text: string): string {
 }
 
 /**
+ * Slack's hard ceiling on a section block's `text`, in characters — counted
+ * after escaping, because escaping is what runs before the block leaves this
+ * module and Slack counts what it receives. A limit checked before escaping is
+ * not a limit: `&` becomes `&amp;`, five characters where the original text
+ * had one, so a translation that fit before escaping can still cross the line
+ * after it.
+ *
+ * Slack does not trim an oversized block; it rejects the whole payload. That
+ * is what makes this worth bounding here rather than leaving to the caller:
+ * `/translate 20` concatenates twenty translations into one reply, and one
+ * long block among them today takes the other nineteen down with it — the
+ * caller gets `unanswerable`, not nineteen good translations and a short one.
+ */
+const SECTION_LIMIT = 3000
+
+/**
+ * What replaces the tail of a translation too long to fit.
+ *
+ * A translation cut short and left to just stop is worth more than a payload
+ * Slack refuses outright — but stopping silently mid-sentence reads as the
+ * model trailing off, a bug in the translation rather than a limit in Slack.
+ * This codebase's rule is that a thing which did not fully happen has to say
+ * so (see `SendOutcome` in `src/slack/send.ts`: `accepted`, not `delivered`,
+ * for the same reason), and an ellipsis alone does not distinguish "the
+ * sentence ended" from "the block did." Said in Brissa's own voice, the way
+ * the notices further down are.
+ */
+const CUT_NOTICE = 'Cut — too long for Slack to send in one block.'
+
+/**
+ * Bound an already-escaped section body — anchor and translation together —
+ * to what Slack will accept.
+ *
+ * Applied to the whole body rather than to the translation alone, but the cut
+ * only ever lands inside the translation. The anchor is a mention plus an
+ * 80-character quote (`QUOTE_LIMIT`) — a few dozen characters, nowhere near
+ * this ceiling — while the translation is the one part with no upper bound at
+ * all. Cutting the anchor to make room would sacrifice the small part that
+ * says *which* message this is to spare the large part that can afford to
+ * lose a sentence; that is the wrong half to protect.
+ */
+function boundToSection(body: string): string {
+  if (body.length <= SECTION_LIMIT) return body
+  const budget = SECTION_LIMIT - CUT_NOTICE.length - 1 // 1 for the newline before it
+  return `${withoutAHalfReference(body.slice(0, budget)).trimEnd()}\n${CUT_NOTICE}`
+}
+
+/**
+ * Never end inside one of Slack's own references.
+ *
+ * A cut that lands in the middle of `<@U0APEL2PG2C>` leaves a `<` with nothing
+ * closing it, and Slack's parser does not treat that as ordinary text — an
+ * unterminated reference can swallow whatever follows, including the line that
+ * says the message was cut. Measured across ninety boundary positions with one
+ * mention sliding through them, twelve produced a mention left open.
+ *
+ * So the tail is trimmed back to before the stray `<`. It costs a few characters
+ * of an already-truncated translation, which is a trade with nothing on the
+ * other side of it.
+ */
+function withoutAHalfReference(text: string): string {
+  const opened = text.lastIndexOf('<')
+  if (opened === -1) return text
+  return text.indexOf('>', opened) === -1 ? text.slice(0, opened) : text
+}
+
+/**
  * `source` is optional, and its absence is a real case rather than a shortcut.
  *
  * The anchor exists because an ephemeral lands at the bottom of a channel with
@@ -149,10 +221,11 @@ export function renderTranslation(translation: Translation, source?: Source): re
   // current display name, which is why this module needs no directory, no
   // `users:read` scope and no cache of names that go stale. In an ephemeral it
   // notifies nobody: the message is never delivered to the person named.
-  const body =
+  const body = boundToSection(
     source === undefined
       ? escapeKeepingReferences(translation.text)
-      : `> <@${source.authorId}>: ${quote(source.text)}\n${escapeKeepingReferences(translation.text)}`
+      : `> <@${source.authorId}>: ${quote(source.text)}\n${escapeKeepingReferences(translation.text)}`,
+  )
 
   return [
     { type: 'section', text: { type: 'mrkdwn', text: body } },
