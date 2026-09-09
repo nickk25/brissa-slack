@@ -6,7 +6,7 @@ import type { TranslationResult, Translator } from '../core/translator.ts'
 import type { Argument, SlashCommand } from '../slack/command.ts'
 import { RESPONSE_URL_BUDGET } from '../slack/shortcut.ts'
 import { createMemoryDirectory } from '../store/memory.ts'
-import { handleCommand, TRANSLATE_COMMAND, type CommandPorts } from './command.ts'
+import { handleCommand, refuseCommand, TRANSLATE_COMMAND, type CommandPorts } from './command.ts'
 
 const nick: Reader = { userId: 'U-nick', reads: ['es', 'en'] }
 const GERMAN = 'Passt bei mir auch, ich melde mich morgen.'
@@ -370,4 +370,24 @@ test('INV-app-73 the last answer is reserved, so a tail can never be dropped', a
 
   assert.ok(s.sent.length <= RESPONSE_URL_BUDGET.responses, `spent ${s.sent.length} answers`)
   assert.deepEqual(shown(s.sent), texts.map((t) => `[${t}]`))
+})
+
+test('INV-app-83 a command refused before it became one still answers the person who typed it', async () => {
+  // This existed untested for two commits, which mutation testing found rather
+  // than review: `refuseCommand` is only called from `main.ts`, and `main.ts` is
+  // excluded from both the test suite and the mutation run. The bug it was
+  // written to fix — a `/translate 0` that reached the operator's terminal and
+  // nobody else — was fixed and then left uncovered.
+  const sent: { text: string; blocks: readonly unknown[] }[] = []
+  await refuseCommand('https://hooks.slack.test/x', 'count-too-large', async (_url, r) => {
+    sent.push({ text: r.text, blocks: r.blocks })
+    return { ok: true }
+  })
+
+  assert.equal(sent.length, 1)
+  assert.ok(sent[0]?.text.includes('count-too-large'), 'the reason has to survive to the caller')
+  // And it says what to do instead, because a refusal that only names the fault
+  // leaves somebody guessing at the shape of the thing that would have worked.
+  assert.ok(sent[0]?.text.includes('/translate'))
+  assert.ok((sent[0]?.blocks.length ?? 0) > 0)
 })

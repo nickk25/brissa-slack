@@ -15,13 +15,16 @@ import { pathToFileURL } from 'node:url'
 import { defaultTranslator } from '../llm/decide.ts'
 import { connectSocketMode } from '../slack/socket.ts'
 import { readCommand } from '../slack/command.ts'
+import { readEnrolCommand } from '../slack/enrol.ts'
 import { createSlackHistory, whoOwns } from '../slack/history.ts'
 import { readShortcut } from '../slack/shortcut.ts'
 import { createSlackApi } from '../slack/web.ts'
+import { createFileEnrolment } from '../store/enrolment.ts'
 import { createMemoryDirectory } from '../store/memory.ts'
 import { createMemorySeen } from '../store/seen.ts'
 import { readConfig } from './config.ts'
 import { handleCommand, refuseCommand } from './command.ts'
+import { ENROL_COMMAND, handleEnrol } from './enrol.ts'
 import { handleShortcut } from './shortcut.ts'
 import { describe } from './report.ts'
 import { acceptEnvelope, type Work } from './http.ts'
@@ -81,6 +84,11 @@ export async function main(): Promise<void> {
     console.log(`  /translate  reads history as ${historyPorts.historyOwner}, and only for them`)
   }
 
+  // Enrolment survives a restart because it is a file, and on Fly a file only
+  // survives if it is on a volume. Everything else Brissa knows — who has been
+  // seen, what a channel's policy is — is still memory and still goes.
+  const enrolment = createFileEnrolment(config.enrolmentPath)
+
   const connection = connectSocketMode({
     appToken: config.appToken,
     onStatus: (status) => console.log(`  ${status}`),
@@ -91,6 +99,23 @@ export async function main(): Promise<void> {
     // a user token there is nothing to read with, and the command says so rather
     // than failing quietly — the shortcut carries its own text and is unaffected.
     onCommand: (payload) => {
+      // Slack delivers every slash command down the same frame, so which one it
+      // is has to be read before anything else can be. Each module refuses a
+      // command that is not its own, but routing here means `/brissa` never
+      // spends a translation deciding it was not a translation.
+      if (typeof (payload as { command?: unknown })?.command === 'string' &&
+          (payload as { command: string }).command === ENROL_COMMAND) {
+        const enrol = readEnrolCommand(payload)
+        if (!enrol.ok) {
+          console.log(`  /brissa refused: ${enrol.because}`)
+          return
+        }
+        void handleEnrol({ enrolment }, enrol.command).then((outcome) => {
+          console.log(`  ${enrol.command.teamId}  /brissa  ${outcome.kind}`)
+        })
+        return
+      }
+
       const read = readCommand(payload)
       if (!read.ok) {
         console.log(`  command refused: ${read.because}`)

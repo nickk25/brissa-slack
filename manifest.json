@@ -22,6 +22,10 @@
       {
         "command": "/translate",
         "description": "Translate recent messages here. Only you see the answer."
+      },
+      {
+        "command": "/brissa",
+        "description": "Enrol yourself: which languages you read, in order. Only you see the answer."
       }
     ]
   },

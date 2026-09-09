@@ -18,3 +18,6 @@ docs/state.html
 # command. The manifest — the part that is a decision — is committed.
 .slack/apps*.json
 .slack/cache/
+
+# Enrolment, when it is kept beside the code rather than on a volume.
+data/
