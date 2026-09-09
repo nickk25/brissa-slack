@@ -29,6 +29,17 @@ Two things in it are load-bearing and easy to lose in an edit:
   they did not need costs more attention than one they missed, so the tie goes to
   silence. `Danke!` is the case that pins this down, and `Passt bei mir auch!` is
   the case that stops the rule collapsing into "short messages are exempt".
+
+  Restraint has a boundary, and it cost a real reader to find it. The courtesy
+  exception once read "a short, universally understood courtesy — a greeting, a
+  thank-you, an acknowledgement", illustrated by `Grazie!` — one word — while
+  the bullet under it said the test is not length. Given that contradiction and
+  a standing instruction to stay silent when in doubt, the model read "Hey and
+  happy Monday, thank you for the Update" as a courtesy and said nothing, to
+  somebody who reads only Spanish. Correct by the prompt as written, and useless
+  to the person it was written for. The exception is now bounded to an isolated
+  token, with the sentence named as what it does not cover: warmth and ordinariness
+  are not what makes a message skippable, being one word is.
 - **The untranslatables.** Code, links, mentions, emoji, product names, numbers
   and dates. Breaking one of these is the most visible way to lose a reader's
   trust, and trust here is binary rather than gradual.

@@ -466,6 +466,11 @@ one.
   from never having enrolled. `test: INV-app-76`
 - `/brissa es en` saves the languages, in order, and confirms them in words.
   `test: INV-app-77`
+- Every hint `/brissa` gives shows an example that does not opt the reader out
+  of a language. Listing a language is how somebody says *do not translate this
+  for me*, so the three hints that read `/brissa es en` were teaching people to
+  silence the language they most needed — one of them did exactly that. They now
+  name one language and say what naming it means.
 - `/brissa off` writes an empty enrolment and confirms translation has
   stopped. `test: INV-app-78`
 - A command this app does not own is left alone. `test: INV-app-79`

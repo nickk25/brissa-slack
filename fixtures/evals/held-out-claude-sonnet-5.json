@@ -1,8 +1,8 @@
 {
   "model": "claude-sonnet-5",
   "corpus": "held-out",
-  "promptHash": "ac4def48cc2e",
-  "ranAt": "2026-09-04T09:28:56.827Z",
+  "promptHash": "1f0e622716bf",
+  "ranAt": "2026-09-09T18:25:44.942Z",
   "runs": 3,
   "cases": 26,
   "measured": 26,

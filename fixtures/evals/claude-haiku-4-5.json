@@ -1,21 +1,13 @@
 {
   "model": "claude-haiku-4-5",
-  "promptHash": "ac4def48cc2e",
-  "ranAt": "2026-09-03T13:28:06.336Z",
+  "corpus": "messages",
+  "promptHash": "1f0e622716bf",
+  "ranAt": "2026-09-09T18:21:39.185Z",
   "runs": 3,
   "cases": 28,
   "measured": 28,
-  "agreed": 24,
-  "flaky": [
-    {
-      "id": "c-027",
-      "answers": [
-        "ignore",
-        "translate",
-        "translate"
-      ]
-    }
-  ],
+  "agreed": 25,
+  "flaky": [],
   "missedTranslations": [
     "c-004",
     "c-006",
@@ -469,12 +461,12 @@
       "id": "c-027",
       "expected": "translate",
       "answers": [
-        "ignore",
+        "translate",
         "translate",
         "translate"
       ],
-      "stable": false,
-      "agreed": false,
+      "stable": true,
+      "agreed": true,
       "errors": [],
       "categories": [
         "dates-times",

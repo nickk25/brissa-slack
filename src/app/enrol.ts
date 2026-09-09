@@ -85,8 +85,8 @@ export async function refuseEnrol(
 ): Promise<void> {
   const text =
     because === 'bad-language'
-      ? 'That did not look like a language. Use two-letter codes, e.g. `/brissa es en` — or `/brissa off` to stop translating for you.'
-      : `That command could not be read: ${because}. Try \`/brissa\`, \`/brissa es en\`, or \`/brissa off\`.`
+      ? 'That did not look like a language. Use two-letter codes, e.g. `/brissa es` — or `/brissa off` to stop translating for you.'
+      : `That command could not be read: ${because}. Try \`/brissa\`, \`/brissa es\`, or \`/brissa off\`.`
   await send(responseUrl, { blocks: line(text), text })
 }
 
@@ -122,13 +122,13 @@ export async function handleEnrol(ports: EnrolPorts, command: EnrolCommand): Pro
     if (record === undefined) {
       return await answer(
         { kind: 'reported', status: { kind: 'never-enrolled' } },
-        'Brissa does not know which languages you read yet. Run `/brissa es en` — your languages, in the order you prefer them — to get started.',
+        'Brissa does not know which languages you read yet. Run `/brissa es` — the languages you already read, in the order you prefer them. Anything you did not list is what gets translated for you.',
       )
     }
     if (record.reads.length === 0) {
       return await answer(
         { kind: 'reported', status: { kind: 'off' } },
-        'Brissa is not translating for you right now — you turned it off. Run `/brissa es en` to turn it back on.',
+        'Brissa is not translating for you right now — you turned it off. Run `/brissa es` — the languages you already read — to turn it back on.',
       )
     }
     return await answer(

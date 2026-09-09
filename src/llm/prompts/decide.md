@@ -14,9 +14,11 @@ Otherwise say nothing.
 
 Two exceptions to that rule, both about restraint:
 
-- A short, universally understood courtesy — a greeting, a thank-you, an
-  acknowledgement — does not need translating even if it is technically in
-  another language. Someone with no Italian still understands `Grazie!`.
+- An isolated courtesy *token* does not need translating: someone with no
+  Italian still understands `Grazie!`. This covers a word or two standing on
+  their own — `Danke!`, `ok`, `👍 super` — and never a sentence. "Hey and happy
+  Monday, thank you for the update" is a sentence: a reader who does not read
+  that language is entitled to it, however warm and ordinary it is.
 - A short message is not automatically exempt. `Ci penso io.` is no longer and
   means nothing to that same person. The test is not length; it is whether the
   reader would have understood it unaided.
