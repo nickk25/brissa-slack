@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { test } from 'node:test'
 import { connectSocketMode, readFrame, type Socket } from './socket.ts'
 import type { Envelope } from './verify.ts'
@@ -300,4 +301,39 @@ test('INV-slack-67 a slash command is acknowledged and handed on unparsed', asyn
   assert.deepEqual(order, ['ack:Env3', 'handed on'])
   assert.deepEqual(seen, [{ command: '/translate' }])
   connection.close()
+})
+
+test('INV-slack-70 a connection waiting to reopen keeps the process alive', async () => {
+  // This is here because the opposite shipped. The reconnect timer was `unref`ed,
+  // so when the socket closed — which Slack does routinely — the only pending
+  // work was a timer Node had been told to ignore, and Node exited with status
+  // 0. Brissa was off and it looked like a clean shutdown.
+  //
+  // Asserted by running it: a unit test cannot see whether the event loop is
+  // held open, but a child process either is still there or it is not.
+  const script = `
+    const { connectSocketMode } = await import('${new URL('./socket.ts', import.meta.url).href}')
+    let closeIt
+    connectSocketMode({
+      appToken: 'x',
+      fetchImpl: async () => ({ json: async () => ({ ok: true, url: 'wss://example.test' }) }),
+      open: () => ({
+        send() {}, close() {},
+        addEventListener(type, listener) { if (type === 'close') closeIt = listener },
+      }),
+      onEnvelope: () => {},
+    })
+    setTimeout(() => { closeIt() }, 50)
+  `
+  const child = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', script], {
+    stdio: 'ignore',
+  })
+
+  const exited = new Promise<number | null>((resolve) => child.on('exit', (code) => resolve(code)))
+  const stillHere = new Promise<'alive'>((resolve) => setTimeout(() => resolve('alive'), 900))
+
+  const outcome = await Promise.race([exited, stillHere])
+  child.kill()
+
+  assert.equal(outcome, 'alive', 'the process exited while a reconnect was pending')
 })

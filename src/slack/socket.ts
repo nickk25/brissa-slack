@@ -153,13 +153,24 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
   let stopped = false
   let socket: Socket | undefined
   let attempt = 0
+  let pending: ReturnType<typeof setTimeout> | undefined
 
   const reconnect = () => {
     if (stopped) return
     attempt += 1
     const wait = Math.min(2 ** attempt * 500, 30_000)
     say(`reconnecting in ${wait}ms`)
-    setTimeout(() => void start(), wait).unref?.()
+
+    // Deliberately NOT `unref`ed, and this line has already cost a live process
+    // once. A reconnect timer that does not hold the event loop open means that
+    // when the socket closes — which Slack does routinely, as this file's own
+    // comment says — the only pending work is a timer Node has been told to
+    // ignore. Node then exits, with status 0, looking exactly like a clean
+    // shutdown. Brissa was off and nothing said so.
+    //
+    // Tests stay fast because `close()` clears this, rather than because the
+    // process was allowed to walk away from it.
+    pending = setTimeout(() => void start(), wait)
   }
 
   async function start(): Promise<void> {
@@ -214,6 +225,10 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
   return {
     close() {
       stopped = true
+      // What `unref` used to do, done deliberately and only when somebody asked
+      // for it: with no timer pending and no socket, nothing holds the loop.
+      if (pending !== undefined) clearTimeout(pending)
+      pending = undefined
       socket?.close()
       socket = undefined
     },
