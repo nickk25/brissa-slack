@@ -385,7 +385,8 @@ anybody deployed it.
 `handleRequest` still has nothing pointed at it: `manifest.json` enables Socket
 Mode and declares no request URL, so Slack never POSTs. That is the right default
 for something nobody has deployed, and it does mean the HTTP path is finished
-before it is reachable.
+before it is reachable. `server.ts` (below) is the same story again: a listener
+that exists and is tested, with nothing in `main.ts` starting it yet.
 
 And nothing counts anything. `report` prints a line to a terminal.
 
@@ -486,4 +487,61 @@ one.
 - Enrolment has somewhere to live, and the environment can move it. The default
   is fine on a laptop and wrong on Fly, where a path outside a volume means every
   deploy forgets everybody. `test: INV-app-84`
+
+## Listening: `server.ts`, and the door OAuth needs
+
+Everything above this line runs with no port open at all — Socket Mode is
+outbound, so there has never been anything for a browser to reach. Per-user
+OAuth breaks that assumption: Slack has to redirect a browser back to a URL
+Brissa owns, so something has to be listening for it to land on.
+
+`server.ts` is that something, built the same way `http.ts` is: transport-thin
+and ignorant on purpose. It exposes exactly three routes —
+`GET /oauth/start`, `GET /oauth/callback`, `GET /healthz` — and knows nothing
+about what an OAuth exchange is, what a token looks like, or how `state` is
+signed. Those decisions arrive as `Routes`, an injected pair of functions this
+file calls without inspecting; the module that actually knows what `start`
+and `callback` do belongs to `src/slack` and `src/store`, not to this one.
+
+A browser is the client on this path, never Slack — the one place in
+`src/app` where that is true. `/oauth/callback`'s answer is plain text read by
+a person mid-installation, not a machine that retries on anything but 2xx, so
+it is never JSON and never a stack trace, and a failure is answered with one
+fixed message rather than whatever the thrown error or the query string
+happened to say. `code` and `state` are already sitting in the browser's
+history and in every proxy log between here and Slack by the time this code
+runs; this file's whole job on that path is refusing to make that worse — it
+never logs the request, and never repeats a query value or an exception's own
+text back into a response.
+
+`/healthz` calls neither route. A health check that awaited `start` or
+`callback` would be answering a question about them, not about whether this
+process is alive — the one thing `fly.toml` now needs `/healthz` to answer
+honestly, now that scale-to-zero no longer keeps this machine's absence from
+mattering (see `fly.toml` and `docs/DEPLOY.md`).
+
+Like `enrol.ts` and the HTTP path above, this is finished with nobody calling
+it yet: `main.ts` still only ever calls `connectSocketMode`, and wiring
+`startServer` to a real `Routes` needs `src/slack/oauth.ts` and
+`src/store/tokens.ts` — this module owns neither, and assumes nothing about
+either beyond the shape of `Routes` itself.
+
+- `/healthz` answers without calling either route, so it cannot hang on what
+  they do. `test: INV-app-85`
+- `/oauth/start` redirects to the location `start()` returns. `test: INV-app-86`
+- `/oauth/callback` hands the callback exactly the query Slack sent, and
+  answers with whatever it returns. `test: INV-app-87`
+- The callback's answer is served as plain text, whatever its body looks
+  like — never JSON. `test: INV-app-88`
+- An unknown path gets 404 and says nothing about what routes do exist.
+  `test: INV-app-89`
+- A method other than GET on a known path is treated the same as an unknown
+  path — nothing here accepts anything else. `test: INV-app-90`
+- A callback that throws answers with one fixed message, never its own text
+  or the query it was given — an exception is exactly where a `code` or a
+  `state` value turns up by accident. `test: INV-app-91`
+- The server closes cleanly, even with a request already answered on a
+  keep-alive connection nobody ended explicitly. `test: INV-app-92`
+- Nothing about a callback request reaches the console, code and state
+  included. `test: INV-app-93`
 
