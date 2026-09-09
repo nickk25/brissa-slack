@@ -304,3 +304,33 @@ test('INV-store-36 every file that exists and cannot be used is the same kind of
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('INV-store-37 a write that failed once does not disable every write after it', async () => {
+  // `writes = writes.then(...)` looks like a queue and behaves like a fuse: one
+  // rejection and every later `.then` skips its callback, re-throwing the first
+  // error forever. A transient EACCES or ENOSPC on the volume would have
+  // disabled `/brissa connect`, `/brissa disconnect` and the dropping of dead
+  // credentials for the life of the process — long after the disk recovered,
+  // and with nothing said.
+  const dir = await tmpDir()
+  try {
+    const store = createFileTokens(join(dir, 'tokens.json'), KEY)
+    await store.write({ teamId: 'T1', userId: 'U-first', token: 'xoxp-1' })
+
+    await chmod(dir, 0o500)
+    await assert.rejects(() => store.write({ teamId: 'T1', userId: 'U-during', token: 'xoxp-2' }))
+    await chmod(dir, 0o700)
+
+    // The same store instance, after the outage.
+    await store.write({ teamId: 'T1', userId: 'U-after', token: 'xoxp-3' })
+    assert.ok(await store.read('T1', 'U-after'), 'a write after a failed write must land')
+    assert.ok(await store.read('T1', 'U-first'), 'and must not lose what was already there')
+
+    // Forgetting has its own chain and the same fuse.
+    await store.forget('T1', 'U-first')
+    assert.equal(await store.read('T1', 'U-first'), undefined)
+  } finally {
+    await chmod(dir, 0o700).catch(() => {})
+    await rm(dir, { recursive: true, force: true })
+  }
+})

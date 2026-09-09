@@ -230,7 +230,19 @@ export function createFileTokens(path: string, keyMaterial: string): Tokens {
       // A promise chain covers one process, which is what runs today. Two
       // machines writing the same file would need a lock, and this is the
       // line that has to change when there are two.
-      writes = writes.then(async () => {
+      // The queue has to survive a link breaking, and `writes = writes.then(...)`
+      // does not: once one write rejects, every later `.then` skips its callback
+      // and re-throws the *first* error. A transient EACCES or ENOSPC on the
+      // volume would disable writing for the life of the process, long after the
+      // disk recovered, and without a word.
+      //
+      // Measured rather than feared: a read-only directory for one write,
+      // permissions restored, and the next write still failed with the stale
+      // error.
+      //
+      // So what is carried forward forgets, and the caller keeps the promise
+      // that still knows how its own write went.
+      const queued = writes.catch(() => {}).then(async () => {
         const all = await readAll(path, secretKey)
         // Read-modify-write, not overwrite-with-one-row: everybody else
         // already on file has to survive a write that is about somebody
@@ -238,7 +250,8 @@ export function createFileTokens(path: string, keyMaterial: string): Tokens {
         all[key(record.teamId, record.userId)] = record
         await writeAll(path, all, secretKey)
       })
-      return writes
+      writes = queued.catch(() => {})
+      return queued
     },
 
     async forget(teamId: string, userId: string): Promise<void> {
@@ -246,12 +259,25 @@ export function createFileTokens(path: string, keyMaterial: string): Tokens {
       // disconnect racing a connect must resolve in whichever order they
       // were actually called, not in whatever order two independent queues
       // happened to schedule them.
-      writes = writes.then(async () => {
+      // The queue has to survive a link breaking, and `writes = writes.then(...)`
+      // does not: once one write rejects, every later `.then` skips its callback
+      // and re-throws the *first* error. A transient EACCES or ENOSPC on the
+      // volume would disable writing for the life of the process, long after the
+      // disk recovered, and without a word.
+      //
+      // Measured rather than feared: a read-only directory for one write,
+      // permissions restored, and the next write still failed with the stale
+      // error.
+      //
+      // So what is carried forward forgets, and the caller keeps the promise
+      // that still knows how its own write went.
+      const queued = writes.catch(() => {}).then(async () => {
         const all = await readAll(path, secretKey)
         delete all[key(teamId, userId)]
         await writeAll(path, all, secretKey)
       })
-      return writes
+      writes = queued.catch(() => {})
+      return queued
     },
   }
 }

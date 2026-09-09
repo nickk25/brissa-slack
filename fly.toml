@@ -1,18 +1,10 @@
 # Fly.io configuration for Brissa. See docs/DEPLOY.md for the commands that
 # use this file and for everything this file cannot say by itself.
 #
-# This has NOT been run through `fly deploy`, and `flyctl config validate`
-# could not be run against it either — `flyctl` was on PATH but this
-# environment had no `fly auth login` session, and validation calls out to
-# Fly's platform rather than checking the schema locally. Treat the
-# `[[services]]` block below as a first draft for a human to
-# `flyctl config validate` and `fly deploy` themselves, not as a
-# platform-confirmed config. Read docs/DEPLOY.md §7 before deploying it: the
-# health check below has nothing to answer it until `main.ts` is wired to
-# `src/app/server.ts`.
+# Validated with `flyctl config validate` and deployed. The app, the machine,
+# the volume and the secrets exist — see docs/DEPLOY.md for what was created.
 
-app = "brissa"           # placeholder — rename if "brissa" is already taken,
-                          # or run `fly apps create` first and match its name here
+app = "brissa"           # created 9 September 2026 in the `personal` org
 primary_region = "fra"   # Frankfurt. EU data residency for German clients —
                           # see docs/DECISIONS.md ("German embedded in
                           # English", the shortcut working "on a message

@@ -241,4 +241,11 @@ a credential leaks into a log nobody meant to write one to.
   truncated one, an empty one and a directory through to a stack trace, which is
   the unactionable failure it existed to prevent. A file that is simply absent
   is still nobody, not a fault. `test: INV-store-36`
+- A write that failed once does not disable every write after it. `writes =
+  writes.then(...)` looks like a queue and behaves like a fuse: one rejection and
+  every later `.then` skips its callback, re-throwing the first error forever. A
+  transient EACCES on the volume would have disabled connecting, disconnecting
+  and the dropping of dead credentials for the life of the process, long after
+  the disk recovered and with nothing said. `enrolment.ts` had the same fuse and
+  the same fix. `test: INV-store-37`
 

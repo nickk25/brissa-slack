@@ -377,15 +377,14 @@ an environment variable on somebody's machine — every new person meant editing
 that file and restarting the process, which does not scale past one and was the
 whole reason nobody else on the team could use Brissa. `enrol.ts` is that door:
 `/brissa es en` to say what you read, `/brissa` to see what Brissa currently
-thinks, `/brissa off` to stop. What is still missing is the wiring — nothing in
-`main.ts` points a real `Enrolment` at `handleEnrol` yet, so this is a finished
-flow reached from `main.ts`, like the HTTP path below and for the same reason:
-anybody deployed it.
+thinks, `/brissa off` to stop. `main.ts` points a real `Enrolment` at it, so
+unlike the HTTP path below this one is reachable by anybody in the workspace.
 
 `handleRequest` still has nothing pointed at it: `manifest.json` enables Socket
-Mode and declares no request URL, so Slack never POSTs. That is the right default
-for something nobody has deployed, and it does mean the HTTP path is finished
-before it is reachable. `server.ts` below is the listener that OAuth needed, and `main.ts` starts it.
+Mode and declares no request URL, so Slack never POSTs events. The HTTP path is
+finished and unreached, which is the right default for something nobody chose to
+expose. What *is* exposed is `server.ts` below — the listener OAuth needed, which
+`main.ts` starts — and it serves the callback and a health check, nothing else.
 And nothing counts anything. `report` prints a line to a terminal.
 
 ## Two things the anchor decides
@@ -518,10 +517,9 @@ process is alive — the one thing `fly.toml` now needs `/healthz` to answer
 honestly, now that scale-to-zero no longer keeps this machine's absence from
 mattering (see `fly.toml` and `docs/DEPLOY.md`).
 
-Like `enrol.ts` and the HTTP path above, this is reached from `main.ts` by
-`startServer` to a real `Routes` needs `src/slack/oauth.ts` and
-`src/store/tokens.ts` — this module owns neither, and assumes nothing about
-either beyond the shape of `Routes` itself.
+`main.ts` is what joins `startServer` to a real `Routes`, and doing that needs
+`src/slack/oauth.ts` and `src/store/tokens.ts` — this module owns neither and
+assumes nothing about either beyond the shape of `Routes` itself.
 
 - `/healthz` answers without calling either route, so it cannot hang on what
   they do. `test: INV-app-85`
@@ -620,4 +618,12 @@ revoking it failed* is the worst of the three outcomes.
 - An ordinary read failure leaves the credential alone. A closed list rather
   than a substring search: dropping a working token over a rate limit would log
   somebody out for being busy. `test: INV-app-108`
+- Disconnecting tells Slack, and says so only when Slack agreed. Mutation found
+  that nothing exercised a successful revocation — "disconnect revokes" was
+  asserted only in the case where it does not, and the difference is whether the
+  person is told their access is withdrawn or told to go and check.
+  `test: INV-app-109`
+- A callback with no state is refused before anything is exchanged. Slack always
+  sends one back, so this fires only for a request somebody made up — which is
+  exactly the request that must not reach an exchange. `test: INV-app-110`
 

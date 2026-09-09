@@ -104,12 +104,13 @@ fly secrets set \
 
 ### Per-user OAuth: two more secrets, and a URL to register with Slack
 
-Read by `src/app/config.ts` and required together — see
-`src/app/config.ts` — the module that owns "required" here — and are not
-enforced by anything running today. They exist for the OAuth exchange
-`src/slack/oauth.ts` performs and `src/app/server.ts`'s `/oauth/callback`
-carries to it; wiring that into `main.ts` and `config.ts` is separate work
-this document does not claim has landed.
+Read by `src/app/config.ts`, which is the module that owns the word "required"
+here, and needed **together**: `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`,
+`SLACK_SIGNING_SECRET`, `BRISSA_PUBLIC_URL` and `BRISSA_TOKENS_KEY`. With any of
+them missing, `/brissa connect` says the feature is off and everything else
+carries on — a half-configured flow walks somebody through Slack's consent
+screen to a callback that cannot complete, which is a worse answer than "not set
+up".
 
 | Secret | Where it comes from |
 | --- | --- |
@@ -141,12 +142,12 @@ A `fly secrets set` triggers a new deploy on its own (the machine restarts
 with the new values). You do not need to `fly deploy` again just because a
 secret changed.
 
-Note: `.env.example` also documents `SLACK_SIGNING_SECRET`, for the HTTP
-request-verification path in `src/slack/verify.ts` / `src/app/http.ts`.
-`src/app/main.ts` — what actually runs in production — never wires that path
-up; it only ever calls `connectSocketMode`. Socket Mode's own proof of origin
-is the connection itself (see the comment at the top of `socket.ts`), so
-there is deliberately no signing secret to set here.
+Note on `SLACK_SIGNING_SECRET`: it has two jobs and only one of them is live.
+It verifies Slack's request signatures on the HTTP events path
+(`src/slack/verify.ts`), which nothing uses while Socket Mode is on — the
+connection is its own proof of origin. And it signs the OAuth `state`, which is
+very much live, which is why it is required above. A state signed with an empty
+string is not signed at all.
 
 ## 3. Deploy
 
@@ -166,7 +167,6 @@ time of writing that class of machine is on the order of a few dollars a
 month (Fly bills per-second for compute plus a small amount for the app
 itself) — check <https://fly.io/docs/about/pricing/> for the actual current
 number; this is a rough order of magnitude, not a quote, and Fly's pricing
-changes. There's no separate database, no volume, no load balancer to add to
 it — the only resource this app owns is the one machine.
 
 **Anthropic:** not Fly's bill at all, and the bigger unknown of the two. One
@@ -180,17 +180,17 @@ while, rather than guessing up front.
 
 ## 5. How to tell it is running
 
-Once `main.ts` actually starts `src/app/server.ts` (see §7 — as of this
-The health check `fly.toml` points at is live: `main.ts` starts the server.
-`/healthz` is the fast signal:
+`main.ts` starts `src/app/server.ts`, so the health check `fly.toml` points at
+is live. `/healthz` is the fast signal:
 
 ```sh
 fly checks list --app brissa
 curl -i https://brissa.fly.dev/healthz     # 200, body "ok"
 ```
 
-Until then, and always for the Socket Mode side that `/healthz` does not and
-cannot speak for, what you have is what the process prints on startup and on
+`/healthz` answers from the HTTP server and says nothing at all about the
+websocket — the process can be serving 200s while Slack has stopped talking to
+it. For that side, what you have is what the process prints on startup and on
 every message it handles:
 
 ```sh
@@ -233,14 +233,9 @@ Said plainly, not buried:
 
 - **No metrics.** Counts of messages seen, translated, or skipped exist only
   as log lines, not as anything queryable.
-- **No persistence across restarts.** `src/store/memory.ts` and
-  `src/store/seen.ts` hold readers, channel policy, and the
-  already-handled-event set entirely in memory. Every deploy — including a
-  secret change, which triggers one — throws all of it away. Slack's own
-  redelivery window is short (a few retries over a few seconds), so this
-  is a small and bounded risk of a rare duplicate translation right after a
-  restart, not silent data loss — but it is real, and there is currently no
-  database (`src/store/`'s own header says so).
+- **Two things persist and the rest does not.** Enrolment and connected tokens
+  live on the volume; the deduplication set and channel policy are memory and go
+  on every restart, which is what they are for.
 
 ## What was actually created, and what it cost
 
@@ -289,9 +284,10 @@ callback that cannot complete, so `readConfig` treats "some of them" as none.
 
 And one that is not a secret but must be set anyway:
 
+| Variable | Value |
+| --- | --- |
 | `BRISSA_TOKENS_PATH` | **`/data/tokens.json`** |
 | `BRISSA_TOKENS_KEY` | `openssl rand -base64 32` — 32 bytes, base64 |
-| --- | --- |
 
 **It defaults to `data/tokens.json`, which on Fly is inside the container and
 gone on every deploy.** Left unset, everybody who connected their account is
@@ -329,3 +325,18 @@ told to reconnect. There is still no subscription to Slack's own
 `tokens_revoked` or `app_uninstalled` events, so this is noticed on next use
 rather than immediately.
 
+## If Brissa refuses to start
+
+It does that on purpose in one case, and the message names the file: the tokens
+store exists and cannot be opened with `BRISSA_TOKENS_KEY`. A wrong key, a key
+that was rotated, or a file written before any of this was encrypted all look
+the same from here — which is what an authentication tag is for.
+
+There are two ways out and no third:
+
+- restore the key that wrote the file, or
+- delete `/data/tokens.json` and have everybody run `/brissa connect` again.
+
+Nothing in that file is recoverable without the key. That is the point of
+encrypting it, and it is why the process refuses to start rather than
+discovering the problem one person at a time.

@@ -210,3 +210,39 @@ test('INV-app-108 an ordinary read failure leaves the credential alone', async (
   assert.deepEqual(t.forgotten, [])
   assert.ok(await t.tokens.read('T1', 'U-nick'))
 })
+
+test('INV-app-109 disconnecting tells Slack, and says so only when Slack agreed', async () => {
+  // Mutation found this: nothing exercised a *successful* revocation, so
+  // "disconnect revokes" was asserted only in the case where it does not. The
+  // difference is what the person is told — one message says their access is
+  // withdrawn, the other says to go and check.
+  let revoked: { url?: string; auth?: string } = {}
+  const agrees = (async (url: string, init: RequestInit) => {
+    revoked = { url, auth: (init.headers as Record<string, string>)?.authorization }
+    return { ok: true, status: 200, json: async () => ({ ok: true, revoked: true }) }
+  }) as unknown as typeof fetch
+
+  const t = fakeTokens([{ teamId: 'T1', userId: 'U-nick', token: 'xoxp-live' }])
+  const result = await disconnect(
+    { config, tokens: t.tokens, now: () => NOW, fetchImpl: agrees },
+    { teamId: 'T1', userId: 'U-nick' },
+  )
+
+  assert.deepEqual(result, { revokedAtSlack: true })
+  assert.equal(revoked.url, 'https://slack.com/api/auth.revoke')
+  // With the person's own token, which is the only one that can revoke it.
+  assert.equal(revoked.auth, 'Bearer xoxp-live')
+  assert.equal(await t.tokens.read('T1', 'U-nick'), undefined)
+})
+
+test('INV-app-110 a callback with no state is refused before anything is exchanged', async () => {
+  // The guard could be deleted without a test noticing. Slack always sends
+  // `state` back, so this only ever fires for a request somebody made up — and
+  // that is exactly the request that must not reach an exchange.
+  const w = wire()
+  assert.deepEqual(await completeConnection(w.ports, { code: 'a-code' }), {
+    kind: 'refused',
+    because: 'bad-state',
+  })
+  assert.equal(w.rows.size, 0)
+})

@@ -88,7 +88,19 @@ export function createFileEnrolment(path: string): Enrolment {
       // A promise chain covers one process, which is what runs today. Two
       // machines writing the same file would need a lock, and this is the line
       // that has to change when there are two.
-      writes = writes.then(async () => {
+      // The queue has to survive a link breaking, and `writes = writes.then(...)`
+      // does not: once one write rejects, every later `.then` skips its callback
+      // and re-throws the *first* error. A transient EACCES or ENOSPC on the
+      // volume would disable writing for the life of the process, long after the
+      // disk recovered, and without a word.
+      //
+      // Measured rather than feared: a read-only directory for one write,
+      // permissions restored, and the next write still failed with the stale
+      // error.
+      //
+      // So what is carried forward forgets, and the caller keeps the promise
+      // that still knows how its own write went.
+      const queued = writes.catch(() => {}).then(async () => {
         const all = await readAll(path)
         // Read-modify-write, not overwrite-with-one-row: every other person
         // already on file has to survive a write that is about somebody else
@@ -96,7 +108,8 @@ export function createFileEnrolment(path: string): Enrolment {
         all[key(record.teamId, record.userId)] = record
         await writeAll(path, all)
       })
-      return writes
+      writes = queued.catch(() => {})
+      return queued
     },
   }
 }
