@@ -1,0 +1,40 @@
+# Everything not needed to run `npm start` in production. There is no build
+# step (see the Dockerfile), so this list is "what src/app/main.ts touches at
+# run time" plus the usual hygiene exclusions — not "what CI needs".
+
+node_modules/
+.git/
+.github/
+.slack/
+
+# Never bake a secret into an image layer. Fly secrets are injected as env
+# vars at run time instead — see docs/DEPLOY.md.
+.env
+.env.*
+!.env.example
+
+# Development, evaluation and gate machinery. None of it is imported by
+# src/app/main.ts; all of it is either a devDependency or reads files main.ts
+# never touches.
+tools/
+fixtures/
+coupling.yaml
+manifest.json
+stryker.config.json
+tsconfig.json
+
+# Tests never run inside the image (npm run test is a CI concern), and
+# CLAUDE.md files are documentation for agents, not runtime input. NOT
+# excluding *.md wholesale: src/llm/decide.ts reads src/llm/prompts/decide.md
+# from disk at run time, and a wildcard here would silently ship a translator
+# that can't find its own prompt.
+**/*.test.ts
+**/CLAUDE.md
+
+docs/
+README.md
+LICENSE
+
+Dockerfile
+.dockerignore
+fly.toml

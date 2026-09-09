@@ -1,0 +1,53 @@
+# Fly.io configuration for Brissa. See docs/DEPLOY.md for the commands that
+# use this file and for everything this file cannot say by itself.
+#
+# This has NOT been run through `fly deploy` or validated against Fly's own
+# schema checker — the agent that wrote it was told not to run `fly`/`flyctl`
+# at all. Treat it as a first draft for a human to `fly deploy` and adjust,
+# not as a proven-working config.
+
+app = "brissa"           # placeholder — rename if "brissa" is already taken,
+                          # or run `fly apps create` first and match its name here
+primary_region = "fra"   # Frankfurt. EU data residency for German clients —
+                          # see docs/DECISIONS.md ("German embedded in
+                          # English", the shortcut working "on a message
+                          # written by somebody in the external
+                          # organisation") and docs/DEPLOY.md. Brissa's whole
+                          # reason to exist is translating for people working
+                          # with German-speaking clients; their message
+                          # content should not leave the EU to be relayed.
+
+[build]
+  # No image/dockerfile line needed: fly finds ./Dockerfile at the repo root
+  # on its own.
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "256mb"
+
+# Deliberately NO [[services]] block.
+#
+# Brissa opens a websocket OUTWARD to Slack (Socket Mode) and accepts no
+# inbound connections — see src/slack/socket.ts. A [[services]] block exists
+# to tell Fly's proxy which port to forward inbound traffic to and which
+# health check to poll; Brissa has neither. Adding one here would be
+# inventing a port that nothing listens on.
+#
+# That absence is also what keeps this machine always on. Fly's
+# `auto_stop_machines` / `auto_start_machines` scale-to-zero behaviour is
+# driven by the proxy watching a service's traffic — no [[services]], nothing
+# for that machinery to act on, nothing to accidentally stop this process.
+# Scaling this to zero would silently take Brissa offline: read
+# src/slack/socket.ts's own comments on `reconnect` for why a stopped process
+# looks exactly like a clean shutdown and says nothing about it.
+#
+# [[restart]] is the other half of "always on": if the process itself exits
+# (a crash, an unhandled rejection reaching top level — this repository's own
+# rule is "never swallow an error", so a real fault is meant to be visible,
+# not survived silently), Fly should bring the machine back rather than leave
+# it stopped.
+[[restart]]
+  policy = "always"
+
+[processes]
+  app = "npm start"
