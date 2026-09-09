@@ -423,3 +423,150 @@ special forms silently guessed at.
 - Something not shaped like a command payload at all — `null`, an array, a
   scalar — is refused by name. `test: INV-slack-79`
 
+## `oauth.ts`, and why the owner stopped being the only reader
+
+The user token above belongs to whoever ran `/translate` first, and until now
+Brissa held exactly one of them. `command.ts` refuses everybody else by name
+rather than reading under that one person's identity, for the reason stated
+there: it would put a colleague's request under the owner's name in Slack's
+own access log and let the owner's channel memberships decide what a stranger
+to this file gets to see. `oauth.ts` is how each person gets their own token
+instead — the Slack-facing half of an OAuth flow; nothing here decides who is
+allowed to run it or where a token ends up stored, only the redirect, the
+signed `state` that survives the round trip, and the exchange.
+
+**User scope only, and there is no field for a bot scope to leak into.** The
+bot is already installed by the time anyone runs this flow; `authorizeUrl`
+builds `user_scope` from exactly the four history scopes `manifest.json`
+already declares and never builds a `scope` parameter at all. Asking for a
+bot scope here would silently make Slack revisit permissions this flow has no
+business touching.
+
+**`state` is signed, not stored — and a signature proves less than it looks
+like it does.** Slack's own purpose for `state` is to stop somebody being
+walked through an authorisation they never started; a consent-screen link
+with no `state` at all lets an attacker send a victim their own link and
+receive the victim's token back. `signState`/`readState` follow `verify.ts`
+closely — the same HMAC discipline, the same timing-safe comparison, the same
+guard against `timingSafeEqual` throwing on a length mismatch instead of
+refusing. **Deliberately stateless**: the payload and its expiry travel
+inside the signed value itself rather than in a server-side session keyed by
+an id in it, because this process can restart between the redirect out to
+Slack and the redirect back — a deploy, a crash, an ordinary restart — and a
+person mid-flow must not be stranded holding a `state` that now points at a
+session nobody remembers.
+
+But `readState` returning `ok: true` proves only that *this app* minted the
+value, unaltered, inside its window — it proves nothing about whose flow it
+was. An attacker can start this flow honestly, receive a validly signed
+`state` carrying their own Slack identity, and hand that value — not their
+own login, just a query parameter — to a victim as if it were a link to
+click. If the victim consents on Slack's real page, Slack redirects back with
+the victim's own `code` next to the attacker's `state`; a caller that trusted
+the signature alone would store the victim's token under the attacker's
+identity. `sameAccount` closes that gap by comparing the account `signState`
+was given against the account `exchangeCode` actually returns — whatever
+wires this flow together **must** call it before writing to
+`src/core/tokens.ts`, and must key that write by `exchangeCode`'s answer,
+never by the state's own claim about who it was for. `state` is carried as an
+`OAuthState` — `{ teamId, userId }`, the same pair every other port in this
+product keys by — specifically so this comparison always has something to
+compare.
+
+A signed `state` is not single-use on its own — nothing here keeps a seen set
+of them the way `src/core/seen.ts` does for event deliveries. It does not
+need to: the value that is genuinely one-time is Slack's own authorization
+`code`, which Slack itself refuses on a second exchange. Once `sameAccount` is
+enforced, pairing a captured `state` with anyone else's `code` gains an
+attacker nothing to begin with.
+
+Ten minutes, not `verify.ts`'s five: that five-minute window bounds a
+server-to-server request measured in milliseconds, so it is already generous
+for its job. This one bounds a *human* round trip through Slack's own
+consent screen — for a workspace with SSO, through an identity provider
+Brissa does not control — and five minutes is tight enough that an
+interruption mid-approval would force a person to start over. Ten minutes
+gives that room without leaving a captured `state` useful for long.
+`readState` also refuses a validly-signed value whose embedded expiry claims
+a lifetime longer than this window: only the secret's holder could produce
+one, so it is defence in depth rather than a live forgery path, but a value
+`signState` could not have produced a moment ago is a truer "malformed" than
+a quiet accept.
+
+**`exchangeCode` reads `authed_user.access_token`, never the top-level
+`access_token`.** Slack's response to `oauth.v2.access` carries two tokens
+when bot and user scopes are both in play: the top-level one is the bot's,
+`authed_user.access_token` is the person's. This flow requests only a user
+scope, but Slack's response shape does not change to match — the field is
+still nested under `authed_user`, and reading the wrong one stores a
+credential that is not this person's at all, in the way that is hardest to
+notice: a real, valid Slack token, just not the one anybody meant to hand
+over.
+
+It must never throw, for the same reason `web.ts` and `history.ts` state for
+themselves: Slack answers `200` with `ok: false` for an application error and
+a non-2xx for one that never reached the application, and a caller several
+`await`s downstream has no shape for an exception, only for data. A claimed
+success is trusted no further than a network response deserves either: every
+field of `team`, `authed_user` — the fields `response.json()` is cast to a
+shape of, the same pattern `web.ts` and `history.ts` already use — is checked
+to be a real, non-empty string before this function calls it complete, not
+merely present. `null`, a number, or an empty string would all satisfy a
+bare `!== undefined` check and none of them is a usable token.
+
+**The secret and the code never reach a returned `detail`.** This function
+holds two things at once no other adapter in this product does — a Slack
+credential and Brissa's own app secret — and a failure path that echoes
+either back out, even by accident through a caught error's own message, is a
+worse bug than the failure it was reporting. The transport-failure branch
+classifies the failure into one of a fixed, closed set of words — never by
+reading `err.message`, and not by reading `err.name` either: both are just
+strings whatever threw got to write, and a hand-rolled `Error` subclass, or a
+library that logs its own request on failure, could put anything in either
+one. Reading neither is the only version of "never leaks" this function can
+actually promise for a value it did not create.
+
+- `authorizeUrl` requests only the four history user scopes, and no bot
+  scope at all — there is no parameter for one to leak into.
+  `test: INV-slack-80`
+- The requested user scopes are the same list `manifest.json` declares under
+  `oauth_config.scopes.user`. `test: INV-slack-81`
+- A state signed and read back before it expires returns the same payload.
+  `test: INV-slack-82`
+- A state past its expiry is refused, and the boundary itself — read exactly
+  at the window — still verifies. `test: INV-slack-83`
+- A state signed with a different secret is refused. `test: INV-slack-84`
+- A state altered after signing is refused — what a parse-and-reserialise, or
+  a tampered query parameter, would look like from here. `test: INV-slack-85`
+- A state with no signature separator is refused rather than thrown.
+  `test: INV-slack-86`
+- A signature of the wrong length is refused, not thrown — the same guard
+  `verify.ts` states for Slack's own request signatures.
+  `test: INV-slack-87`
+- A validly-signed body that is not our own shape underneath is refused as
+  malformed rather than accepted — including one carrying an unexpected
+  `__proto__` key, refused by the same exact-shape check as any other wrong
+  shape rather than by a dedicated guard. A signature only proves the bytes
+  were not altered after signing, never that they were ever one of ours to
+  begin with. `test: INV-slack-88`
+- A state claiming a longer lifetime than `signState` ever grants is
+  refused, even though correctly signed — a value this module could not have
+  produced a moment ago. `test: INV-slack-89`
+- `sameAccount` matches only when both the team and the user agree; either
+  one differing is a different account, not a partial match.
+  `test: INV-slack-90`
+- `exchangeCode` reads the `authed_user` token, never the top-level bot
+  token. `test: INV-slack-91`
+- Slack refusing with a 200 is treated as a refusal, not a success.
+  `test: INV-slack-92`
+- A bad status and a dropped connection are both reported, never thrown.
+  `test: INV-slack-93`
+- A success response is refused by name unless every one of its fields is a
+  real, non-empty string — missing, empty, `null` and wrongly-typed all
+  count as incomplete. `test: INV-slack-94`
+- An error response whose own `error` field is not a real string reports a
+  fixed placeholder instead of passing the untrusted value through.
+  `test: INV-slack-95`
+- A transport failure is classified from a fixed vocabulary, never by
+  echoing the thrown value's own message or name. `test: INV-slack-96`
+
