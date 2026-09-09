@@ -237,7 +237,7 @@ exactly the reading its own doc comment exists to head off before anything
 built on top of it — a log line, an error message, a debug endpoint — gets
 the chance to make it.
 
-It also carries a method none of the other five need: `revoke`. A stale
+It also carries a method none of the other five need: `forget`. A stale
 language preference costs nothing to leave on file; a dead bearer credential
 is the worst thing to leave sitting anywhere, and Slack can end this token's
 life — a person disconnecting it from their own app-management page, an

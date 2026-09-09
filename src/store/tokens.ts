@@ -11,7 +11,6 @@
  * the other. One file, one blast radius — keep this one smaller.
  *
  * `src/core/tokens.ts` is being written alongside this file by another agent
- * and is not imported here — importing it would mean editing this module
  * against a port that might still be in motion. `Tokens` and `UserTokenRecord`
  * below are this module's own account of the shape it needs; the report for
  * this change says so explicitly, so the two can be reconciled by hand
@@ -115,7 +114,7 @@ async function writeAll(path: string, contents: OnDisk): Promise<void> {
 }
 
 /**
- * `read`, `write` and `delete` all go through the file, not a cache kept in
+ * `read`, `write` and `forget` all go through the file, not a cache kept in
  * memory — the same discipline `enrolment.ts` states: the same question
  * asked twice must get the same answer.
  */

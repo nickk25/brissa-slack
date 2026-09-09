@@ -56,6 +56,10 @@ primary_region = "fra"   # Frankfurt. EU data residency for German clients —
 # exact failure src/slack/socket.ts's `reconnect` comment describes, just
 # caused by the proxy instead of by Slack's own end of the socket.
 [[services]]
+  # Required once the app declares [processes]: Fly refuses a service that does
+  # not say which process it fronts, and only says so when asked. `flyctl config
+  # validate` caught this twice; reading the file caught it neither time.
+  processes     = ["app"]
   internal_port = 8080
   protocol       = "tcp"
   auto_stop_machines  = false
@@ -69,6 +73,10 @@ primary_region = "fra"   # Frankfurt. EU data residency for German clients —
   [[services.ports]]
     port     = 80
     handlers = ["http"]
+    # The callback URL carries an authorisation code. Served over port 80 it
+    # crosses the network in clear, and a code is worth exactly one exchange to
+    # whoever reads it first. Redirected rather than accepted.
+    force_https = true
 
   # /healthz answers on its own, calling neither OAuth route — see
   # src/app/server.ts and src/app/CLAUDE.md ("Listening: server.ts"). A check

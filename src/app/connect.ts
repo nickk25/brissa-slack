@@ -14,16 +14,26 @@
  * ephemeral only they can see. That is why there is no route here that starts a
  * flow: there is nowhere honest to start one from.
  *
- * **The identity is Slack's answer, never the state's claim.** This is the one
- * thing in the file that is a security property rather than a design
- * preference, and it is the bug an adversarial review of `oauth.ts` caught
- * before any of this was wired: a signed `state` proves only that Brissa minted
- * it, not whose flow it belongs to. An attacker can start the flow honestly,
- * obtain a validly signed state carrying their own identity, and send that link
- * to somebody else — whose real consent then arrives attached to the attacker's
- * name. `sameAccount` is what refuses that, and it is called here rather than
- * left to whoever wires this up, because a check somebody has to remember is a
- * check that will one day be forgotten.
+ * **The identity is Slack's answer, never the state's claim**, and the record is
+ * keyed by that answer. Those are two separate guards and it is worth being
+ * precise about what each one buys, because an earlier version of this comment
+ * was not.
+ *
+ * Keying by Slack's answer is what makes credential theft impossible: whatever
+ * the link claimed, the token can only ever be filed under the person who
+ * actually consented.
+ *
+ * `sameAccount` sits on top of that and buys something smaller but real. A
+ * signed `state` proves only that Brissa minted it, not whose flow it is, so an
+ * attacker can start the flow honestly and send their link to somebody else.
+ * Without this check that person would be silently connected by following a
+ * link they were handed — a surprise, and consent to something they did not
+ * initiate, but not access granted to anybody else. It is refused here rather
+ * than left to whoever wires this up, because a check somebody has to remember
+ * is a check that will one day be forgotten.
+ *
+ * An adversarial review caught the missing binding; a second one caught this
+ * comment overstating what restoring it had bought.
  */
 
 import type { Tokens } from '../core/tokens.ts'
@@ -111,16 +121,17 @@ export async function completeConnection(ports: ConnectPorts, query: CallbackQue
   )
   if (!exchanged.ok) return { kind: 'refused', because: 'exchange-failed' }
 
-  // The line the whole flow rests on. Slack has just told us whose consent this
-  // is; the state told us whose flow it was meant to be. If they differ,
-  // somebody has been walked through an authorisation they did not start, and
-  // storing it would file their access under another person's name.
+  // Slack has just said whose consent this is; the state said whose flow it was
+  // meant to be. If they differ, somebody has been walked through an
+  // authorisation they did not start — and connecting them anyway would be
+  // taking a link they were handed as if it were a decision they made.
   const who: OAuthState = { teamId: exchanged.teamId, userId: exchanged.userId }
   if (!sameAccount(state.payload, who)) return { kind: 'refused', because: 'wrong-account' }
 
-  // Keyed by Slack's answer, never by the state's claim — even now that the two
-  // are known to agree, because the next person to read this should not have to
-  // reconstruct why that was safe.
+  // Keyed by Slack's answer, never by the state's claim. This is the guard that
+  // makes theft impossible rather than merely unlikely: whatever a link said,
+  // a token can only be filed under whoever actually consented. It stays
+  // explicit even though the check above has just proven the two agree.
   await ports.tokens.write({ teamId: who.teamId, userId: who.userId, token: exchanged.token })
 
   return { kind: 'connected', teamId: who.teamId, userId: who.userId }

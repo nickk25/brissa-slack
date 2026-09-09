@@ -135,7 +135,17 @@ test('INV-app-102 OAuth is configured wholly or not at all', async () => {
 test('INV-app-103 credentials and preferences are kept in different files', async () => {
   // Merging them for tidiness would put a bearer credential wherever a language
   // preference is convenient to read.
-  const c = readConfig(complete)
-  assert.ok(c.ok)
-  assert.notEqual(c.config.tokensPath, c.config.enrolmentPath)
+  // Asserting two default literals differ proves nothing; what matters is that
+  // pointing them at one file is refused rather than quietly accepted.
+  const same = readConfig({
+    ...complete,
+    BRISSA_ENROLMENT_PATH: '/data/everything.json',
+    BRISSA_TOKENS_PATH: '/data/everything.json',
+  })
+  assert.ok(!same.ok, 'one file for both must not start')
+  assert.ok(same.ok === false && same.problems.some((p) => p.includes('same file')))
+
+  const apart = readConfig(complete)
+  assert.ok(apart.ok)
+  assert.notEqual(apart.config.tokensPath, apart.config.enrolmentPath)
 })

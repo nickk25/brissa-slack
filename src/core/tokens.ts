@@ -35,7 +35,7 @@
  *   third party could carry back to somebody other than the person it
  *   belongs to.** The token travels from Slack to this port and no further.
  *
- * Read, write, and revoke, mirroring `enrolment.ts`'s own justification for
+ * Read, write, and forget, mirroring `enrolment.ts`'s own justification for
  * why a write here is not the mistake `directory.ts` warns against: the fact
  * this port holds is not computed from anything else Brissa knows, it is
  * handed over once, by the one person it is about, at the end of an OAuth
@@ -44,7 +44,7 @@
  * only a place to put one, and a way to take it out, once somebody else has
  * decided that it should.
  *
- * `revoke` earns its place for a reason `enrolment.ts` never had to answer:
+ * `forget` earns its place for a reason `enrolment.ts` never had to answer:
  * a language preference costs nothing to leave on file forever, and a dead
  * bearer credential is the worst thing to leave sitting anywhere. Slack
  * itself can end this token's life without telling this port — a person

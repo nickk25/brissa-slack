@@ -88,7 +88,22 @@ async function respond(routes: Routes, req: IncomingMessage, res: ServerResponse
   // A base is required to parse a path-only `req.url`; it is never used for
   // anything but reading `pathname` and `searchParams` back off, so what it
   // says does not matter.
-  const url = new URL(req.url ?? '/', 'http://internal')
+  //
+  // **Node's HTTP parser is more permissive than WHATWG URL**, and that gap is
+  // reachable from the internet. `GET http://[::1 HTTP/1.1` arrives here as a
+  // request-target Node was happy to accept and `new URL` refuses, and this
+  // threw before the guard existed — one line of curl, one unhandled rejection,
+  // and the process holding Brissa's websocket was gone. `restart = always`
+  // then made a script out of it.
+  let url: URL
+  try {
+    url = new URL(req.url ?? '/', 'http://internal')
+  } catch {
+    // Nothing of the request goes into the answer. Whoever sent it knows what
+    // they sent, and echoing it back is how a reflected value finds a log.
+    send(res, 400, 'bad request')
+    return
+  }
   const method = req.method ?? 'GET'
 
   // Exactly three routes, each GET-only. Everything else — a path this app
@@ -151,7 +166,23 @@ export interface RunningServer {
 export function startServer(routes: Routes, port: number): Promise<RunningServer> {
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
-      void respond(routes, req, res)
+      // The last line of defence, and it exists because the first one was
+      // missing. `respond` is not awaited by anything, so a rejection here has
+      // nowhere to go but the process — and this process holds the websocket
+      // every translation arrives on.
+      void respond(routes, req, res).catch(() => {
+        if (!res.headersSent) send(res, 500, 'something went wrong')
+        else res.end()
+      })
+    })
+
+    // Malformed before Node ever builds a request object: a bad header line, a
+    // request-target it cannot parse at all. Left unhandled, Node's default is
+    // to destroy the socket, which is fine — what is not fine is the default
+    // for `clientError` changing under us, so it is stated.
+    server.on('clientError', (_err, socket) => {
+      if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n')
+      else socket.destroy()
     })
 
     server.once('error', reject)

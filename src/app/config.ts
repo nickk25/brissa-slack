@@ -146,6 +146,15 @@ export function readConfig(env: Record<string, string | undefined>): Configured 
   // No channels is not a problem. They are off until somebody switches one on,
   // which is this product's whole disposition — starting with none is the honest
   // first state rather than a misconfiguration.
+  const enrolmentPath = env.BRISSA_ENROLMENT_PATH?.trim() || 'data/enrolment.json'
+  const tokensPath = env.BRISSA_TOKENS_PATH?.trim() || 'data/tokens.json'
+  if (enrolmentPath === tokensPath) {
+    // The contract says credentials and preferences live apart so tidiness
+    // cannot put a bearer token wherever a language preference is convenient to
+    // read. Said in prose it is a hope; refused here it is a rule.
+    problems.push('BRISSA_TOKENS_PATH and BRISSA_ENROLMENT_PATH point at the same file — credentials and preferences are kept apart')
+  }
+
   const channels = readChannels(env.BRISSA_CHANNELS ?? '')
 
   if (problems.length > 0) return { ok: false, problems }
@@ -156,8 +165,8 @@ export function readConfig(env: Record<string, string | undefined>): Configured 
       botToken,
       appToken,
       userToken: env.SLACK_USER_TOKEN?.trim() || undefined,
-      enrolmentPath: env.BRISSA_ENROLMENT_PATH?.trim() || 'data/enrolment.json',
-      tokensPath: env.BRISSA_TOKENS_PATH?.trim() || 'data/tokens.json',
+      enrolmentPath,
+      tokensPath,
       signingSecret: env.SLACK_SIGNING_SECRET?.trim() ?? '',
       port: Number(env.PORT?.trim()) || 8080,
       oauth: oauthFrom(env),

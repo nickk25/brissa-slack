@@ -235,7 +235,6 @@ Said plainly, not buried:
   exists and is tested (`src/app/server.test.ts`), and `fly.toml` now declares
   a `[[services]]` block with an `http_checks` entry against `/healthz` — but
   nothing in `main.ts` calls `startServer` yet (see `src/app/CLAUDE.md`,
-  "Listening: `server.ts`"). **Do not `fly deploy` this `fly.toml` before that
   wiring lands.** Deployed as-is, the health check would poll a port nothing
   listens on and the machine would never report healthy. Once `main.ts` is
   wired, the check tells you what §5 says; until then, the log lines are still
@@ -285,4 +284,50 @@ Brissa is listening as claude-sonnet-5.
 
 That last line is the only proof there is. There is still no health check,
 because there is still no port to put one on.
+
+## The secrets per-user OAuth added
+
+Set with `fly secrets set`, like the others. All four are needed together — a
+partial configuration takes somebody through Slack's consent screen to a
+callback that cannot complete, so `readConfig` treats "some of them" as none.
+
+| Secret | Where it comes from |
+| --- | --- |
+| `SLACK_CLIENT_ID` | Basic Information → App Credentials |
+| `SLACK_CLIENT_SECRET` | the same panel, behind **Show** |
+| `SLACK_SIGNING_SECRET` | the same panel. It signs the OAuth `state`, and a state signed with an empty string is not signed |
+| `BRISSA_PUBLIC_URL` | `https://brissa.fly.dev` — no trailing slash |
+
+And one that is not a secret but must be set anyway:
+
+| `BRISSA_TOKENS_PATH` | **`/data/tokens.json`** |
+| --- | --- |
+
+**It defaults to `data/tokens.json`, which on Fly is inside the container and
+gone on every deploy.** Left unset, everybody who connected their account is
+silently disconnected the next time this ships — and finds out only when
+`/translate` starts refusing them. It belongs on the volume beside enrolment.
+
+Register the redirect URL in Slack under **OAuth & Permissions → Redirect
+URLs**, exactly:
+
+```
+https://brissa.fly.dev/oauth/callback
+```
+
+Slack compares that string character for character against what it is sent. A
+trailing slash on `BRISSA_PUBLIC_URL` becomes a double slash here and the whole
+flow is refused, with an error that reads like something else — which is why
+`readConfig` trims them.
+
+## What is still true about what this does not do
+
+The tokens file is `0600` on an encrypted volume and is **not encrypted at
+rest** by Brissa itself. That is the only barrier, and it is written down here
+rather than assumed.
+
+There is no handling of `tokens_revoked` or `app_uninstalled`. Somebody who
+revokes Brissa from their own Slack settings leaves a dead token on disk, and
+`/translate` answers them "could not read this channel" indefinitely with no
+hint to reconnect.
 

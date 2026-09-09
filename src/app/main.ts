@@ -115,7 +115,7 @@ export async function main(): Promise<void> {
         }
 
   if (connecting === undefined) {
-    console.log('  /brissa connect  off — SLACK_CLIENT_ID, SLACK_CLIENT_SECRET and BRISSA_PUBLIC_URL are needed together')
+    console.log('  /brissa connect  off — SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, BRISSA_PUBLIC_URL and SLACK_SIGNING_SECRET are needed together')
   } else {
     const running = await startServer(
       {
@@ -173,11 +173,13 @@ export async function main(): Promise<void> {
             if (arg.kind === 'connect') {
               // Handed back privately: a link with somebody's identity signed
               // into it is not a link to paste in a channel.
-              await replyPrivately(enrol.command.responseUrl, {
+              const handed = await replyPrivately(enrol.command.responseUrl, {
                 blocks: [],
                 text: `Authorise Brissa to read channels as you: ${connectUrl(connecting, who)}\n\nOnly you can see this link, and only you can use it.`,
               })
-              console.log(`  ${who.teamId}  /brissa connect  link issued`)
+              // Reported on what happened rather than on what was attempted: a
+              // link that never arrived is a person staring at nothing.
+              console.log(`  ${who.teamId}  /brissa connect  ${handed.ok ? 'link issued' : `unanswerable: ${handed.detail}`}`)
               return
             }
             const gone = await disconnect(connecting, who)
@@ -188,7 +190,12 @@ export async function main(): Promise<void> {
                 : 'Disconnected. Brissa has forgotten your token; Slack would not confirm the revocation, so check Apps in your Slack settings.',
             })
             console.log(`  ${who.teamId}  /brissa disconnect  revokedAtSlack=${gone.revokedAtSlack}`)
-          })()
+          })().catch((err: unknown) => {
+            // `tokens.read` throws on a corrupt or unreadable file. Without this
+            // the first `/brissa connect` after that would take the process — and
+            // Brissa's websocket — down with it.
+            console.error(`  /brissa ${arg.kind} failed: ${String((err as Error)?.name ?? 'error')}`)
+          })
           return
         }
 
@@ -222,7 +229,11 @@ export async function main(): Promise<void> {
         const what = outcome.kind === 'noticed' ? `noticed:${outcome.notice}` : outcome.kind
         const why = 'detail' in outcome ? ` — ${outcome.detail}` : ''
         console.log(`  ${read.command.channelId}  /translate  ${what}${why}`)
-      })()
+      })().catch((err: unknown) => {
+        // Same reason. A `tokens.json` nobody can read must break `/translate`,
+        // not the process every translation arrives through.
+        console.error(`  /translate failed: ${String((err as Error)?.name ?? 'error')}`)
+      })
     },
     onInteractive: (payload) => {
       const read = readShortcut(payload)

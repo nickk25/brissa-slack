@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { connect } from 'node:net'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
 import { startServer, type CallbackQuery, type Routes } from './server.ts'
@@ -191,4 +192,43 @@ test('INV-app-93 nothing about a callback request reaches the console, code and 
   }
 
   assert.deepEqual(seen, [])
+})
+
+test('INV-app-104 a request target Node accepts and URL refuses does not take the process down', async () => {
+  // Node's HTTP parser is more permissive than WHATWG URL, and this port is
+  // public. `GET http://[::1 HTTP/1.1` arrived as something Node was happy to
+  // hand over and `new URL` threw on — one line of curl, one unhandled
+  // rejection, and the process holding Brissa's websocket was gone. `restart =
+  // always` then made a script of it.
+  //
+  // Driven over a raw socket because a well-formed client cannot send this.
+  const running = await startServer(
+    { start: () => ({ location: 'https://slack.com' }), callback: async () => ({ status: 200, body: 'ok' }) },
+    0,
+  )
+
+  const ask = (line: string): Promise<string> =>
+    new Promise((resolve) => {
+      const socket = connect(running.port, '127.0.0.1', () => socket.write(`${line}\r\nHost: x\r\n\r\n`))
+      let seen = ''
+      socket.on('data', (d) => {
+        seen += String(d)
+        socket.end()
+      })
+      socket.on('close', () => resolve(seen))
+      socket.on('error', () => resolve('socket error'))
+      setTimeout(() => {
+        socket.destroy()
+        resolve('no answer')
+      }, 500).unref()
+    })
+
+  for (const line of ['GET http://[::1 HTTP/1.1', 'GET http://a:b:c/ HTTP/1.1', 'GET http://%zz/ HTTP/1.1']) {
+    assert.match(await ask(line), /^HTTP\/1\.1 400 /, line)
+  }
+
+  // Still answering afterwards, which is the whole assertion: the process is
+  // the one holding the Slack connection.
+  assert.match(await ask('GET /healthz HTTP/1.1'), /^HTTP\/1\.1 200 /)
+  await running.close()
 })

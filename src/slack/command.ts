@@ -82,6 +82,7 @@ export type CommandRead =
         | 'no-response-url'
         | 'no-channel'
         | 'no-user'
+        | 'no-team'
         | 'count-zero'
         | 'count-too-large'
     }
@@ -132,6 +133,10 @@ export function readCommand(payload: unknown): CommandRead {
   // indistinguishable from a command that did nothing.
   if (!raw.channel_id) return { ok: false, because: 'no-channel', responseUrl }
   if (!raw.user_id) return { ok: false, because: 'no-user', responseUrl }
+  // Refused rather than defaulted. A token is keyed by `(teamId, userId)`, and
+  // an empty team would file everybody from every workspace under one blank
+  // key — `readEnrolCommand` already refuses this and the two must agree.
+  if (!raw.team_id) return { ok: false, because: 'no-team', responseUrl }
 
   const argument = parseArgument(raw.text ?? '')
   // Carried down from the argument parser, which never saw the payload: a
@@ -144,7 +149,7 @@ export function readCommand(payload: unknown): CommandRead {
     command: {
       command: raw.command ?? '',
       channelId: raw.channel_id,
-      teamId: raw.team_id ?? '',
+      teamId: raw.team_id,
       invokedBy: raw.user_id,
       argument: argument.argument,
       responseUrl: raw.response_url,

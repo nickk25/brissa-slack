@@ -386,7 +386,6 @@ anybody deployed it.
 Mode and declares no request URL, so Slack never POSTs. That is the right default
 for something nobody has deployed, and it does mean the HTTP path is finished
 before it is reachable. `server.ts` (below) is the same story again: a listener
-that exists and is tested, with nothing in `main.ts` starting it yet.
 
 And nothing counts anything. `report` prints a line to a terminal.
 
@@ -521,7 +520,6 @@ honestly, now that scale-to-zero no longer keeps this machine's absence from
 mattering (see `fly.toml` and `docs/DEPLOY.md`).
 
 Like `enrol.ts` and the HTTP path above, this is finished with nobody calling
-it yet: `main.ts` still only ever calls `connectSocketMode`, and wiring
 `startServer` to a real `Routes` needs `src/slack/oauth.ts` and
 `src/store/tokens.ts` — this module owns neither, and assumes nothing about
 either beyond the shape of `Routes` itself.
@@ -556,17 +554,21 @@ carries no Slack identity, so there is nothing there to bind a flow to. It is
 comes back in an ephemeral only they can see. That is why no route here starts a
 flow: there is nowhere honest to start one from.
 
-**The identity is Slack's answer, never the state's claim.** A signed `state`
-proves only that Brissa minted it, not whose flow it belongs to. An attacker can
-start the flow honestly, obtain a validly signed state carrying their own
-identity, and send that link to somebody else — whose real consent then arrives
-attached to the attacker's name, and whose channels `/translate` would then read
-for them. An adversarial review of `oauth.ts` caught this before any of it was
-wired.
+**The record is keyed by Slack's answer, never by the state's claim.** That is
+the guard that makes credential theft impossible: whatever a link said, a token
+can only ever be filed under the person who actually consented.
 
-`sameAccount` refuses it, and it is called **here** rather than left to whoever
-wires this up, because a check somebody has to remember is a check that will one
-day be forgotten.
+**`sameAccount` sits on top of it**, and buys something smaller but real. A
+signed `state` proves only that Brissa minted it, not whose flow it is, so an
+attacker can start the flow honestly and hand their link to somebody else.
+Without the check that person is silently connected by following a link they
+were given — a surprise, and consent to something they did not begin, but not
+access granted to anyone else.
+
+One adversarial review caught the missing binding. A second caught this section
+claiming the binding prevented theft, when the keying already did. Both are kept
+because the smaller guarantee is still worth having, and because a contract that
+overstates is the thing this repository is built to refuse.
 
 **Disconnecting is two things.** Forgetting drops Brissa's copy; revoking tells
 Slack the credential is finished with. Somebody told "disconnected" while their
@@ -574,8 +576,8 @@ token still authorises reads has been told something false. Both happen — and
 the local copy goes even when Slack refuses, because a credential kept *because
 revoking it failed* is the worst of the three outcomes.
 
-- Consent is filed under whoever Slack says gave it, not whoever the link
-  claimed. `test: INV-app-94`
+- Consent is filed under whoever Slack says gave it, and a flow somebody did
+  not begin is refused rather than silently completed. `test: INV-app-94`
 - An honest authorisation is stored against the person who gave it.
   `test: INV-app-95`
 - A state that has expired is refused, and says which kind of refusal it is —
@@ -597,4 +599,9 @@ revoking it failed* is the worst of the three outcomes.
 - Credentials and preferences are kept in different files, so tidiness cannot
   put a bearer token wherever a language preference is convenient to read.
   `test: INV-app-103`
+- A request target Node accepts and `URL` refuses does not take the process
+  down. Node's HTTP parser is more permissive than WHATWG URL and this port is
+  public; `GET http://[::1 HTTP/1.1` threw where nothing awaited it, and the
+  process that holds Brissa's websocket exited. `restart = always` then made a
+  script of it. `test: INV-app-104`
 

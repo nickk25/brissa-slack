@@ -115,11 +115,16 @@ test('INV-app-97 somebody saying no is not a failure', async () => {
   // fault would put an incident in the log every time somebody changed their
   // mind, which is a thing they are entitled to do.
   const w = wire()
-  assert.deepEqual(await completeConnection(w.ports, { error: 'access_denied', state: 's' }), {
+
+  // With a code alongside it, so the `error` branch is what does the refusing —
+  // otherwise the missing code refuses first and this passes with the check
+  // deleted, which is what it did.
+  const state = signState(SECRET, { teamId: 'T1', userId: 'U-nick' }, NOW)
+  assert.deepEqual(await completeConnection(w.ports, { error: 'access_denied', code: 'c', state }), {
     kind: 'refused',
     because: 'no-code',
   })
-  assert.equal(w.rows.size, 0)
+  assert.equal(w.rows.size, 0, 'a refusal must not be exchanged for a token')
 })
 
 test('INV-app-98 nothing is stored when Slack refuses the exchange', async () => {
