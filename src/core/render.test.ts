@@ -219,6 +219,43 @@ test('INV-core-26 a reference in the translation stays a reference, and everythi
   assert.ok(translated?.includes('&lt;b&gt;'))
 })
 
+test('INV-core-28 a translation too long for one Slack block is truncated, not dropped, and says so', () => {
+  // Slack rejects the whole payload for one oversized block, so `/translate 20`
+  // would otherwise lose nineteen good translations to the twentieth. Cut
+  // instead — and cut visibly, because a translation that just stops reads as
+  // the model trailing off rather than as a limit in Slack.
+  const huge = 'x'.repeat(4000)
+  const blocks = renderTranslation({ text: huge, foundLanguages: ['de'] }, JENS)
+  const s = section(blocks)
+  assert.ok(s?.type === 'section')
+
+  assert.ok(s.text.text.length <= 3000)
+  assert.ok(s.text.text.endsWith('Cut — too long for Slack to send in one block.'))
+
+  // The anchor is the cheap, load-bearing half — it says which message this
+  // is — and the cut never touches it, no matter how long the translation runs.
+  assert.ok(s.text.text.startsWith('> <@U-jens>: Passt bei mir auch!\n'))
+
+  // And an untruncated translation is untouched: the bound only ever bites
+  // once the block is actually too big to send.
+  const short = renderTranslation({ text: 'Me viene bien.', foundLanguages: ['de'] }, JENS)
+  const shortSection = section(short)
+  assert.ok(shortSection?.type === 'section')
+  assert.ok(!shortSection.text.text.includes('Cut —'))
+})
+
+test('INV-core-29 the block limit is counted after escaping, not before', () => {
+  // `&` becomes `&amp;` — five characters where the original had one. A
+  // translation just under the limit before escaping can still cross it after,
+  // and a bound checked on the wrong side of escaping would let that through.
+  const justUnderRaw = '&'.repeat(2999) // 2999 raw chars; 14995 once escaped
+  const blocks = renderTranslation({ text: justUnderRaw, foundLanguages: ['de'] }, JENS)
+  const s = section(blocks)
+  assert.ok(s?.type === 'section')
+  assert.ok(s.text.text.length <= 3000)
+  assert.ok(s.text.text.endsWith('Cut — too long for Slack to send in one block.'))
+})
+
 test('INV-core-27 only Slack’s own reference syntax survives escaping', () => {
   // A loose pattern here would hand back exactly what escaping exists to
   // prevent: arbitrary text becoming markup.

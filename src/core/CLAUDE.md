@@ -97,6 +97,13 @@ that answered it in advance was a contract stating something false.
   because somebody clicked and there was no translation to show: silence would
   read as a broken button, a paragraph as an incident, and "you can already read
   this" is information rather than a failure. `test: INV-core-24`
+- A translation too long for one Slack block is truncated rather than dropped,
+  and the cut is named rather than left as a bare ellipsis — a translation that
+  just stops reads as the model trailing off, not as a limit in Slack.
+  `test: INV-core-28`
+- The block limit is counted after escaping, not before. Escaping expands text
+  — `&` becomes `&amp;` — so a bound checked on the raw string would let an
+  escaped block through that Slack still refuses. `test: INV-core-29`
 
 ## Why rendering is here and not in the adapter
 
@@ -151,6 +158,37 @@ doubles the height of something that appeared unprompted in somebody else's
 channel. One line also matters mechanically — Slack's `>` quotes to the end of
 the line, and a newline would drop the rest of the original outside the quote
 bar where it reads as the translation.
+
+## Why every section is bounded
+
+Slack rejects a `section` block over 3000 characters, and rejects the whole
+payload it was part of — not just that one block. `/translate 20`
+concatenates twenty translations into one reply; before this bound, one long
+translation among them failed all twenty, and the caller got `unanswerable`
+where nineteen good translations should have been.
+
+**Truncate, do not drop.** A translation cut short still tells the reader most
+of what was said. A payload Slack refuses tells them nothing, and it takes
+everyone else's translation down with it.
+
+**The cut lands in the translation, never the anchor.** The anchor is a
+mention and an 80-character quote (`QUOTE_LIMIT`) — bounded already, a few
+dozen characters at most. The translation is the one part with no ceiling of
+its own. Trimming the anchor to make room for an oversized translation would
+protect the large, disposable half at the expense of the small half that says
+*which* message this is — backwards.
+
+**The cut says so.** A translation that just stops mid-sentence reads as the
+model losing its thread, not as a limit somewhere else in the pipeline. This
+is the same instinct behind `SendOutcome` in `src/slack/send.ts` — `accepted`,
+not `delivered` — and behind every notice below: a thing that did not fully
+happen has to say so, out loud, in Brissa's own voice. An ellipsis alone does
+not do that; a trailing line naming the cut does.
+
+**Counted after escaping.** Escaping expands text — `&` becomes `&amp;`, five
+characters for one — so a limit checked before escaping is not the limit
+Slack enforces. The bound runs on the string as it leaves this module, after
+`escapeKeepingReferences`, not before.
 
 ## Three outcomes, not two
 
