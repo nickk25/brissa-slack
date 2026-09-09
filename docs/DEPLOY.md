@@ -181,3 +181,38 @@ Said plainly, not buried:
   is a small and bounded risk of a rare duplicate translation right after a
   restart, not silent data loss — but it is real, and there is currently no
   database (`src/store/`'s own header says so).
+
+## What was actually created, and what it cost
+
+Applied on 9 September 2026. Recorded because a deploy nobody wrote down is one
+somebody has to rediscover from a dashboard.
+
+| | |
+| --- | --- |
+| App | `brissa`, org `personal`, region `fra` |
+| Machine | one `shared-cpu-1x`, 256 MB, always on |
+| Volume | `brissa_data`, 1 GB, encrypted, mounted at `/data` |
+| Secrets | seven, staged with `fly secrets import` and never printed |
+| Image | 57 MB |
+
+The volume exists for one file. Enrolment is the only thing Brissa is meant to
+remember across a deploy; the deduplication set and channel policy are memory on
+purpose and are meant to go.
+
+`BRISSA_ENROLMENT_PATH` is `/data/enrolment.json` and is set as a secret rather
+than written into `fly.toml`, so it cannot drift away from the mount without
+somebody noticing.
+
+**The first run said what it should:**
+
+```
+Mounting /dev/vdc at /data
+Brissa is listening as claude-sonnet-5.
+  readers   U03QMMUHTPU reads es, en
+  /translate  reads history as U03QMMUHTPU, and only for them
+  connected
+```
+
+That last line is the only proof there is. There is still no health check,
+because there is still no port to put one on.
+
