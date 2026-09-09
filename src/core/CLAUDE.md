@@ -85,6 +85,14 @@ that answered it in advance was a contract stating something false.
   it translates; text somebody just typed into a slash command has no such
   problem, and quoting it back under their own name is the app repeating what
   they said a second ago. `test: INV-core-25`
+- A reference in the translation stays a reference, and everything else stays
+  inert. The asymmetry with the quote above it is the point: the original arrives
+  as evidence of what somebody said and must not become live, while the
+  translation is Brissa's own sentence, where a mention is the only part the
+  reader could not have guessed — an id that means nothing to a person, which
+  Slack renders as a name for free. `test: INV-core-26`
+- Only Slack's own reference syntax survives escaping. A loose pattern would hand
+  back exactly what escaping exists to prevent. `test: INV-core-27`
 - Every notice is one line, and none of them apologises. Notices exist only
   because somebody clicked and there was no translation to show: silence would
   read as a broken button, a paragraph as an incident, and "you can already read

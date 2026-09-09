@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { escapeMrkdwn, noticeText, renderNotice, renderTranslation } from './render.ts'
+import { escapeKeepingReferences, escapeMrkdwn, noticeText, renderNotice, renderTranslation } from './render.ts'
 import type { Source } from './render.ts'
 
 const JENS: Source = { authorId: 'U-jens', text: 'Passt bei mir auch!' }
@@ -194,4 +194,37 @@ test('INV-core-25 a translation with no source to point at carries no anchor', (
 
   // And it is still two blocks: the context line says where it came from either way.
   assert.equal(blocks.length, 2)
+})
+
+test('INV-core-26 a reference in the translation stays a reference, and everything else stays inert', () => {
+  // The asymmetry with the quote above it is the point. The original arrives as
+  // evidence of what somebody said, so a mention inside it must not become live.
+  // The translation is Brissa's own sentence about that text, and there the
+  // mention is the only part of it the reader could not have guessed — an id
+  // that means nothing to a person, which Slack renders as a name for free.
+  const blocks = renderTranslation(
+    { text: '<@U-ana> está de vacaciones. Usa <b> con cuidado.', foundLanguages: ['de'] },
+    { authorId: 'U-jens', text: '<@U-ana> hat Urlaub. Nutze <b> vorsichtig.' },
+  )
+  const s = section(blocks)
+  assert.ok(s?.type === 'section')
+  const [quoted, translated] = s.text.text.split('\n')
+
+  // Live in the translation…
+  assert.ok(translated?.includes('<@U-ana>'))
+  // …and inert in the quote, in the same message.
+  assert.ok(quoted?.includes('&lt;@U-ana&gt;'))
+
+  // Anything that is not one of Slack's own references is still escaped.
+  assert.ok(translated?.includes('&lt;b&gt;'))
+})
+
+test('INV-core-27 only Slack’s own reference syntax survives escaping', () => {
+  // A loose pattern here would hand back exactly what escaping exists to
+  // prevent: arbitrary text becoming markup.
+  const kept = ['<@U123>', '<#C123|general>', '<!here>', '<https://example.test/x|aquí>']
+  const inert = ['<b>', '<script>', '<@ U123>', '<mailto:a@b.test>', '< @U123>']
+
+  for (const live of kept) assert.equal(escapeKeepingReferences(live), live, live)
+  for (const dead of inert) assert.ok(!escapeKeepingReferences(dead).includes('<'), dead)
 })

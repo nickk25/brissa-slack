@@ -51,6 +51,41 @@ export function escapeMrkdwn(text: string): string {
 }
 
 /**
+ * Slack's own entities, written the only way Slack writes them.
+ *
+ * `<@U123>` is a person, `<#C123>` a channel, `<!here>` a broadcast, and
+ * `<http://x|label>` a link. Slack renders each as a name; anything else between
+ * angle brackets it leaves alone. The pattern is deliberately narrow — an id is
+ * letters and digits, a link starts with a scheme — because the whole point of
+ * escaping is that arbitrary text cannot become markup, and a loose pattern here
+ * would hand that back.
+ */
+const SLACK_ENTITY = /&lt;((?:@|#|!)[A-Za-z0-9_^|-]*|https?:\/\/[^\s|]+(?:\|[^&]*)?)&gt;/g
+
+/**
+ * Escaped, but with Slack's own references left working.
+ *
+ * The translation is the one place where a mention has to survive as a mention.
+ * A message that says "@Antonia is on holiday" translated into a message that
+ * says `<@U0APEL2PG2C> is on holiday` has lost the only part of the sentence the
+ * reader could not have guessed — and it is information Slack renders for free,
+ * from an id that means nothing to a person.
+ *
+ * The quote above the translation is escaped **without** this, and the asymmetry
+ * is the point: the original is somebody else's text arriving as evidence of
+ * what was said, and a mention inside it must not become a live reference. The
+ * translation is Brissa's own sentence about that text, and there a reference is
+ * what the reader needs.
+ *
+ * Escaping first and selectively restoring second, rather than matching the raw
+ * text, so anything that merely looks like an entity has already been made inert
+ * before this runs.
+ */
+export function escapeKeepingReferences(text: string): string {
+  return escapeMrkdwn(text).replace(SLACK_ENTITY, (_, inner: string) => `<${inner}>`)
+}
+
+/**
  * The blocks for one translation.
  *
  * A section carrying the message, and one line of context saying where it came
@@ -116,8 +151,8 @@ export function renderTranslation(translation: Translation, source?: Source): re
   // notifies nobody: the message is never delivered to the person named.
   const body =
     source === undefined
-      ? escapeMrkdwn(translation.text)
-      : `> <@${source.authorId}>: ${quote(source.text)}\n${escapeMrkdwn(translation.text)}`
+      ? escapeKeepingReferences(translation.text)
+      : `> <@${source.authorId}>: ${quote(source.text)}\n${escapeKeepingReferences(translation.text)}`
 
   return [
     { type: 'section', text: { type: 'mrkdwn', text: body } },

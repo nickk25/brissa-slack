@@ -255,6 +255,12 @@ a revoked app token does not reconnect in a tight loop forever.
 - Arriving connected resets the backoff, so a connection that survives an hour
   and then drops does not wait thirty seconds it earned days earlier.
   `test: INV-slack-45`
+- A connection waiting to reopen keeps the process alive. The opposite shipped:
+  the reconnect timer was `unref`ed, so when the socket closed — which Slack does
+  routinely — the only pending work was a timer Node had been told to ignore, and
+  the process exited with status 0. Brissa was off and it looked like a clean
+  shutdown. Asserted by running it in a child process, because a unit test cannot
+  see whether the event loop is held open. `test: INV-slack-70`
 
 ## The shortcut, and why it is the better half
 
