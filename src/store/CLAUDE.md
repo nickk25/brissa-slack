@@ -147,3 +147,12 @@ yet" rather than thrown.
 - A write that fails before it renames leaves the previous file exactly as it
   was — the whole reason the write goes to a temporary path first.
   `test: INV-store-18`
+- Two people enrolling at the same moment both stay enrolled. A read-modify-write
+  pair that overlap take the same photograph of the file, each add themselves to
+  their own copy, and the second rename wins — so the person who lost is told
+  "saved" and is not, discovering it only when Brissa never translates for them.
+  Measured before the fix: two concurrent writes, one record on disk. Serialising
+  covers one process, which is what runs today; two machines writing one file
+  would need a lock, and that is the line to change when there are two.
+  `test: INV-store-19`
+

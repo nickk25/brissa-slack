@@ -70,6 +70,8 @@ async function writeAll(path: string, contents: OnDisk): Promise<void> {
  * that rule exists to rule out.
  */
 export function createFileEnrolment(path: string): Enrolment {
+  let writes: Promise<void> = Promise.resolve()
+
   return {
     async read(teamId: string, userId: string): Promise<EnrolmentRecord | undefined> {
       const all = await readAll(path)
@@ -77,12 +79,24 @@ export function createFileEnrolment(path: string): Enrolment {
     },
 
     async write(record: EnrolmentRecord): Promise<void> {
-      const all = await readAll(path)
-      // Read-modify-write, not overwrite-with-one-row: every other person
-      // already on file has to survive a write that is about somebody else
-      // entirely.
-      all[key(record.teamId, record.userId)] = record
-      await writeAll(path, all)
+      // Serialised, and the reason is a measurement rather than a worry. Two
+      // people typing `/brissa` in the same moment both read the same file,
+      // both add themselves to their own copy, and the second rename wins — so
+      // one of them is told "saved" and is not. Tried before this line existed:
+      // two concurrent writes, one record left on disk.
+      //
+      // A promise chain covers one process, which is what runs today. Two
+      // machines writing the same file would need a lock, and this is the line
+      // that has to change when there are two.
+      writes = writes.then(async () => {
+        const all = await readAll(path)
+        // Read-modify-write, not overwrite-with-one-row: every other person
+        // already on file has to survive a write that is about somebody else
+        // entirely.
+        all[key(record.teamId, record.userId)] = record
+        await writeAll(path, all)
+      })
+      return writes
     },
   }
 }

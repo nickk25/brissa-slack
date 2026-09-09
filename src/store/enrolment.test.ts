@@ -95,3 +95,21 @@ test('INV-store-18 a write that fails before it renames leaves the previous file
   assert.deepEqual(leftover, [])
   await rm(dir, { recursive: true, force: true })
 })
+
+test('INV-store-19 two people enrolling at the same moment both stay enrolled', async () => {
+  // A read-modify-write pair that overlap take the same photograph of the file,
+  // each add themselves to their own copy, and the second rename wins. The
+  // person who lost is told "saved" and is not — which they only discover by
+  // Brissa never translating for them. Measured before the fix: two concurrent
+  // writes, one record left on disk.
+  const path = join(tmpdir(), `brissa-enrol-race-${process.pid}-${Math.random().toString(36).slice(2)}.json`)
+  const store = createFileEnrolment(path)
+  const people = ['U-nick', 'U-ana', 'U-bo', 'U-cy']
+
+  await Promise.all(people.map((userId) => store.write({ teamId: 'T1', userId, reads: ['de'] })))
+
+  for (const userId of people) {
+    assert.ok(await store.read('T1', userId), `${userId} was lost`)
+  }
+  await rm(path, { force: true })
+})
