@@ -137,6 +137,14 @@ export async function handleEnrol(ports: EnrolPorts, command: EnrolCommand): Pro
     )
   }
 
+  // Connecting an account is a different thing from saying which languages you
+  // read, and it is handled where the credential work lives — `src/app/connect.ts`
+  // and the wiring above it. Refused here rather than silently ignored, so a
+  // caller is never met with nothing.
+  if (argument.kind === 'connect' || argument.kind === 'disconnect') {
+    return { kind: 'not-ours', command: `${command.command} ${argument.kind}` }
+  }
+
   // 'off' and 'set' both come down to one write: off is a record whose `reads`
   // is empty, the same empty list `shouldAsk` already reads as "stay silent
   // for this reader" — no second code path for stopping.

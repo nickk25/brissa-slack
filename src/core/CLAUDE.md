@@ -210,16 +210,41 @@ The port lives here rather than in `src/llm` so the core owns the shape of the
 question. An interface declared in the adapter would let the SDK's vocabulary
 cross back one field at a time.
 
-## Five ports, and why all of them are declared here
+## Six ports, and why all of them are declared here
 
 `translator.ts` asks for a translation. `directory.ts` asks who reads what in a
 channel. `seen.ts` asks whether a delivery has already been handled. `history.ts`
 asks what was recently said in a channel. `enrolment.ts` reads, and writes, one
-person's own account of what they read. None of them is called by anything in
-this module, and all of them belong here anyway: the core owns the shape of the
+person's own account of what they read. `tokens.ts` reads, writes, and revokes
+one person's own Slack user token. None of them is called by anything in this
+module, and all of them belong here anyway: the core owns the shape of the
 question, and an interface declared in the module that answers it would let that
 module's vocabulary — a table name, a row, an SDK type — cross back one field at
 a time.
+
+`tokens.ts` is the newest of the six, and it is worth saying plainly why it is
+not simply `enrolment.ts` with a different field name — its own doc comment
+makes the same case at length, and this is the short version. Every other
+port here holds a *fact* about a person; getting one wrong loses a preference
+or mistranslates a message, once. `tokens.ts` holds a *bearer credential* —
+`src/slack/oauth.ts` is where it first arrives, from Slack, and its own
+contract states the same discipline from the other direction. Whoever holds
+the value this port stores can read every channel the person it belongs to
+can read, until that person revokes it themselves. That is not a bigger
+version of the mistake `enrolment.ts` risks, it is a different kind of
+mistake, and treating it as "one more record keyed by `(teamId, userId)`" is
+exactly the reading its own doc comment exists to head off before anything
+built on top of it — a log line, an error message, a debug endpoint — gets
+the chance to make it.
+
+It also carries a method none of the other five need: `forget`. A stale
+language preference costs nothing to leave on file; a dead bearer credential
+is the worst thing to leave sitting anywhere, and Slack can end this token's
+life — a person disconnecting it from their own app-management page, an
+admin deactivating the account — without this store hearing about it any
+other way. `write`'s replace-in-place semantics have no way to say "and now
+there is nothing here"; `enrolment.ts` can say that with an empty `reads`
+because a list has an empty state, and a bearer token does not.
 
 `enrolment.ts` is the one port here that writes, and it earns that only because
 of what it is: a person's own declaration of a fact about themselves, made

@@ -171,7 +171,7 @@ test('INV-core-24 every notice is one line, and none of them apologises', () => 
   // to show. Silence would read as a broken button; a paragraph would read as an
   // incident. One line, and "you can already read this" is information rather
   // than a failure.
-  for (const notice of ['already-readable', 'nothing-to-translate', 'nobody-knows-you', 'translation-failed'] as const) {
+  for (const notice of ['already-readable', 'nothing-to-translate', 'nobody-knows-you', 'translation-failed', 'not-your-account', 'reconnect-needed', 'cannot-read-here'] as const) {
     const blocks = renderNotice(notice)
     assert.equal(blocks.length, 1)
     const c = context(blocks)

@@ -42,6 +42,14 @@ export interface SlashCommand {
   /** Slack's own command string, e.g. `/translate`. Whether it is ours to answer is `src/app`'s call, the same way `callbackId` is for the shortcut. */
   readonly command: string
   readonly channelId: string
+  /**
+   * The workspace it came from.
+   *
+   * Carried because a token is keyed by `(teamId, userId)` and a user id alone
+   * is not unique across workspaces — the day Brissa is installed in two, a
+   * key without this would hand one person another's credential.
+   */
+  readonly teamId: string
   /** The person who typed it, and the only person who will see the answer. */
   readonly invokedBy: string
   readonly argument: Argument
@@ -51,6 +59,7 @@ export interface SlashCommand {
 
 /** The parts of a slash command payload this reads. */
 interface RawCommand {
+  readonly team_id?: string
   readonly command?: string
   readonly text?: string
   readonly channel_id?: string
@@ -73,6 +82,7 @@ export type CommandRead =
         | 'no-response-url'
         | 'no-channel'
         | 'no-user'
+        | 'no-team'
         | 'count-zero'
         | 'count-too-large'
     }
@@ -123,6 +133,10 @@ export function readCommand(payload: unknown): CommandRead {
   // indistinguishable from a command that did nothing.
   if (!raw.channel_id) return { ok: false, because: 'no-channel', responseUrl }
   if (!raw.user_id) return { ok: false, because: 'no-user', responseUrl }
+  // Refused rather than defaulted. A token is keyed by `(teamId, userId)`, and
+  // an empty team would file everybody from every workspace under one blank
+  // key — `readEnrolCommand` already refuses this and the two must agree.
+  if (!raw.team_id) return { ok: false, because: 'no-team', responseUrl }
 
   const argument = parseArgument(raw.text ?? '')
   // Carried down from the argument parser, which never saw the payload: a
@@ -135,6 +149,7 @@ export function readCommand(payload: unknown): CommandRead {
     command: {
       command: raw.command ?? '',
       channelId: raw.channel_id,
+      teamId: raw.team_id,
       invokedBy: raw.user_id,
       argument: argument.argument,
       responseUrl: raw.response_url,

@@ -5,20 +5,39 @@ app before, skip to §1.
 
 ## 0. What you are actually deploying
 
-Brissa is not a web server. `npm start` runs
+Brissa's core is still not a web server in the way most Fly apps are. `npm
+start` runs
 `node --experimental-strip-types --env-file-if-exists=.env src/app/main.ts`,
 which opens a websocket **outward** to Slack (Socket Mode — see
-`src/slack/socket.ts`) and keeps it open. It listens on no port and receives
-no inbound HTTP. That one fact shapes everything below:
+`src/slack/socket.ts`) for every message it translates automatically, and
+keeps that connection open for as long as the process runs.
 
-- There is nothing for Fly's health checks or load balancer to point at, so
-  `fly.toml` has no `[[services]]` block and no port. Don't add one — it
-  would be inventing a listener that doesn't exist.
-- It must run continuously. A stopped machine is a Brissa that has silently
-  gone offline, and — per `src/slack/socket.ts`'s own comments — a process
-  that exits looks exactly like a clean shutdown, with nothing that says so.
-  `fly.toml` has no `auto_stop_machines`/scale-to-zero behaviour and sets
-  `[[restart]] policy = "always"` instead: one machine, always on.
+What changed is per-user OAuth: Slack has to redirect a person's browser back
+to a URL Brissa owns to finish connecting their account, and a redirect only
+works if something answers it. `src/app/server.ts` is that something — a
+small `node:http` server with exactly three routes
+(`/oauth/start`, `/oauth/callback`, `/healthz`), documented in
+`src/app/CLAUDE.md` ("Listening: `server.ts`"). That reshapes what used to be
+true here:
+
+- `fly.toml` now has an `[[services]]` block, forwarding `443`/`80` to
+  `internal_port = 8080` — the port `src/app/server.ts` is expected to
+  listen on. This is **not** inventing a listener that doesn't exist any
+  more; it is naming one that genuinely does.
+- It must still run continuously, and for a reason that has nothing to do
+  with the new port: the always-open Socket Mode websocket. A stopped
+  machine is a Brissa that has silently gone offline, and — per
+  `src/slack/socket.ts`'s own comments — a process that exits looks exactly
+  like a clean shutdown, with nothing that says so. Adding a `[[services]]`
+  block would normally hand Fly's proxy the traffic-based signal it uses to
+  scale a machine to zero, which is exactly the outcome that must not
+  happen here — a browser hitting `/oauth/start` once during an install
+  looks, to that proxy, like the idle traffic pattern `auto_stop_machines`
+  exists to notice. So `fly.toml` sets `auto_stop_machines = false` and
+  `min_machines_running = 1` **explicitly**, on the service, rather than
+  relying on there being no service to trigger it. `[[restart]]
+  policy = "always"` is unchanged and covers the other half: the process
+  itself exiting.
 - The region is `fra` (Frankfurt): EU data residency for German-speaking
   clients. Brissa exists to translate for people whose Slack channels contain
   German (see `docs/DECISIONS.md`); their message content should not leave
@@ -83,16 +102,52 @@ fly secrets set \
   --app brissa
 ```
 
+### Per-user OAuth: two more secrets, and a URL to register with Slack
+
+Read by `src/app/config.ts`, which is the module that owns the word "required"
+here, and needed **together**: `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`,
+`SLACK_SIGNING_SECRET`, `BRISSA_PUBLIC_URL` and `BRISSA_TOKENS_KEY`. With any of
+them missing, `/brissa connect` says the feature is off and everything else
+carries on — a half-configured flow walks somebody through Slack's consent
+screen to a callback that cannot complete, which is a worse answer than "not set
+up".
+
+| Secret | Where it comes from |
+| --- | --- |
+| `SLACK_CLIENT_ID` | Slack app settings → Basic Information → App Credentials |
+| `SLACK_CLIENT_SECRET` | Slack app settings → Basic Information → App Credentials — treat it exactly like the other secrets on this page: `fly secrets set`, never committed, never logged |
+
+```sh
+fly secrets set \
+  SLACK_CLIENT_ID='...' \
+  SLACK_CLIENT_SECRET='...' \
+  --app brissa
+```
+
+Slack also needs to know where to send a browser back once someone approves
+the connection. In the app's settings, under **OAuth & Permissions → Redirect
+URLs**, add:
+
+```
+https://brissa.fly.dev/oauth/callback
+```
+
+(`brissa.fly.dev` because that is this app's name and Fly's default domain —
+see `fly.toml`'s `app = "brissa"`. If the app was ever created under a
+different name, use that name's `.fly.dev` host instead.) This is the one
+piece of Slack-side configuration that lives outside `fly secrets set`
+entirely — it is set in Slack's own UI, not on this machine.
+
 A `fly secrets set` triggers a new deploy on its own (the machine restarts
 with the new values). You do not need to `fly deploy` again just because a
 secret changed.
 
-Note: `.env.example` also documents `SLACK_SIGNING_SECRET`, for the HTTP
-request-verification path in `src/slack/verify.ts` / `src/app/http.ts`.
-`src/app/main.ts` — what actually runs in production — never wires that path
-up; it only ever calls `connectSocketMode`. Socket Mode's own proof of origin
-is the connection itself (see the comment at the top of `socket.ts`), so
-there is deliberately no signing secret to set here.
+Note on `SLACK_SIGNING_SECRET`: it has two jobs and only one of them is live.
+It verifies Slack's request signatures on the HTTP events path
+(`src/slack/verify.ts`), which nothing uses while Socket Mode is on — the
+connection is its own proof of origin. And it signs the OAuth `state`, which is
+very much live, which is why it is required above. A state signed with an empty
+string is not signed at all.
 
 ## 3. Deploy
 
@@ -112,7 +167,6 @@ time of writing that class of machine is on the order of a few dollars a
 month (Fly bills per-second for compute plus a small amount for the app
 itself) — check <https://fly.io/docs/about/pricing/> for the actual current
 number; this is a rough order of magnitude, not a quote, and Fly's pricing
-changes. There's no separate database, no volume, no load balancer to add to
 it — the only resource this app owns is the one machine.
 
 **Anthropic:** not Fly's bill at all, and the bigger unknown of the two. One
@@ -126,8 +180,18 @@ while, rather than guessing up front.
 
 ## 5. How to tell it is running
 
-There is no health-check endpoint — see §7. What you have instead is what
-the process prints on startup and on every message it handles:
+`main.ts` starts `src/app/server.ts`, so the health check `fly.toml` points at
+is live. `/healthz` is the fast signal:
+
+```sh
+fly checks list --app brissa
+curl -i https://brissa.fly.dev/healthz     # 200, body "ok"
+```
+
+`/healthz` answers from the HTTP server and says nothing at all about the
+websocket — the process can be serving 200s while Slack has stopped talking to
+it. For that side, what you have is what the process prints on startup and on
+every message it handles:
 
 ```sh
 fly logs --app brissa
@@ -167,20 +231,11 @@ again — there is no data migration to reverse.
 
 Said plainly, not buried:
 
-- **No health check.** There is no HTTP surface to check. The honest signal
-  that Brissa is alive is its own log lines (§5) and `fly status`. If Fly
-  ever reports the machine as up but the websocket has silently wedged
-  without hitting `reconnect`, nothing here would notice.
 - **No metrics.** Counts of messages seen, translated, or skipped exist only
   as log lines, not as anything queryable.
-- **No persistence across restarts.** `src/store/memory.ts` and
-  `src/store/seen.ts` hold readers, channel policy, and the
-  already-handled-event set entirely in memory. Every deploy — including a
-  secret change, which triggers one — throws all of it away. Slack's own
-  redelivery window is short (a few retries over a few seconds), so this
-  is a small and bounded risk of a rare duplicate translation right after a
-  restart, not silent data loss — but it is real, and there is currently no
-  database (`src/store/`'s own header says so).
+- **Two things persist and the rest does not.** Enrolment and connected tokens
+  live on the volume; the deduplication set and channel policy are memory and go
+  on every restart, which is what they are for.
 
 ## What was actually created, and what it cost
 
@@ -213,6 +268,75 @@ Brissa is listening as claude-sonnet-5.
   connected
 ```
 
-That last line is the only proof there is. There is still no health check,
-because there is still no port to put one on.
 
+## The secrets per-user OAuth added
+
+Set with `fly secrets set`, like the others. All four are needed together — a
+partial configuration takes somebody through Slack's consent screen to a
+callback that cannot complete, so `readConfig` treats "some of them" as none.
+
+| Secret | Where it comes from |
+| --- | --- |
+| `SLACK_CLIENT_ID` | Basic Information → App Credentials |
+| `SLACK_CLIENT_SECRET` | the same panel, behind **Show** |
+| `SLACK_SIGNING_SECRET` | the same panel. It signs the OAuth `state`, and a state signed with an empty string is not signed |
+| `BRISSA_PUBLIC_URL` | `https://brissa.fly.dev` — no trailing slash |
+
+And one that is not a secret but must be set anyway:
+
+| Variable | Value |
+| --- | --- |
+| `BRISSA_TOKENS_PATH` | **`/data/tokens.json`** |
+| `BRISSA_TOKENS_KEY` | `openssl rand -base64 32` — 32 bytes, base64 |
+
+**It defaults to `data/tokens.json`, which on Fly is inside the container and
+gone on every deploy.** Left unset, everybody who connected their account is
+silently disconnected the next time this ships — and finds out only when
+`/translate` starts refusing them. It belongs on the volume beside enrolment.
+
+Register the redirect URL in Slack under **OAuth & Permissions → Redirect
+URLs**, exactly:
+
+```
+https://brissa.fly.dev/oauth/callback
+```
+
+Slack compares that string character for character against what it is sent. A
+trailing slash on `BRISSA_PUBLIC_URL` becomes a double slash here and the whole
+flow is refused, with an error that reads like something else — which is why
+`readConfig` trims them.
+
+## What is still true about what this does not do
+
+The tokens file is encrypted at rest with `BRISSA_TOKENS_KEY`, AES-256-GCM, on
+top of `0600` and Fly's own volume encryption. Be exact about what that buys: a
+snapshot, a backup, or a copy of the file taken without the environment is
+noise. It buys **nothing** against anything that compromises the running
+process, which holds the key by definition.
+
+The key must live in the environment and never on the volume — `fly secrets set`
+does exactly that. Losing it means every connected person has to run `/brissa
+connect` again; nothing is recoverable from the file without it, which is the
+point.
+
+A credential Slack has stopped honouring — revoked from somebody's own Slack
+settings, or expired — is dropped the next time it fails, and that person is
+told to reconnect. There is still no subscription to Slack's own
+`tokens_revoked` or `app_uninstalled` events, so this is noticed on next use
+rather than immediately.
+
+## If Brissa refuses to start
+
+It does that on purpose in one case, and the message names the file: the tokens
+store exists and cannot be opened with `BRISSA_TOKENS_KEY`. A wrong key, a key
+that was rotated, or a file written before any of this was encrypted all look
+the same from here — which is what an authentication tag is for.
+
+There are two ways out and no third:
+
+- restore the key that wrote the file, or
+- delete `/data/tokens.json` and have everybody run `/brissa connect` again.
+
+Nothing in that file is recoverable without the key. That is the point of
+encrypting it, and it is why the process refuses to start rather than
+discovering the problem one person at a time.

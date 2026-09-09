@@ -156,3 +156,96 @@ yet" rather than thrown.
   would need a lock, and that is the line to change when there are two.
   `test: INV-store-19`
 
+## Tokens: the one write that is not safe to log
+
+`tokens.ts` answers a port shaped like `Enrolment`'s — read one person, write
+one person, keyed by `(teamId, userId)` — but it is not the same file, and it
+is not a tidiness question. `enrolment.ts` holds a preference somebody would be
+happy to have printed in a support channel; `tokens.ts` holds a credential
+that lets Brissa act as that person on Slack. Folding them together would mean
+every future reader of "who reads what", every backup, every debug dump of one
+file, is also a reader of the other. One file, one blast radius, and this one
+stays smaller on purpose.
+
+It keeps every promise `enrolment.ts` makes — atomic writes, serialised
+writes, a missing file read as "nobody connected yet" rather than an error,
+the path arriving as a parameter and never as `process.env` — and adds three
+more that a credential needs and a preference does not:
+
+**The file is created `0600`.** `enrolment.ts` does not do this because a
+preference is not worth restricting; a token is a credential the instant it
+touches disk, and the mode a new file gets otherwise is whatever the process
+umask leaves it — on a shared host, that can be group- or world-readable. The
+mode is asserted on the temporary file at creation, before the rename, so a
+crash mid-write cannot leave behind a file with the wrong permissions.
+
+**Deleting is not optional.** A store that can only add is a store that keeps
+a credential after the person it belongs to has withdrawn consent — Slack
+revokes are one-way, and Brissa disconnecting has to be too. Deleting a
+record that was never there is not an error, the same way `enrolment.ts`
+treats a missing file: the end state ("nothing on file") is identical either
+way.
+
+**Nothing here logs, returns unprompted, or folds a token into an error
+message.** A `console` call is the cheapest place that guarantee leaks from
+first, so read, write and delete are spied on end to end and must produce
+none — the same shape `INV-app-64` in `src/app/command.test.ts` established
+for the port this module was modelled after keeping quiet. A corrupt file is
+reported by its path; the raw bytes that failed to parse are never folded
+into the thrown error, because an error message is exactly the kind of place
+a credential leaks into a log nobody meant to write one to.
+
+- A person who has never connected reads back as `undefined`, not an error.
+  `test: INV-store-20`
+- What was written is what comes back, keyed by team and user together — the
+  same user in two different teams is two different records.
+  `test: INV-store-21`
+- A store nobody has ever written to answers "nobody connected yet", not an
+  error. `test: INV-store-22`
+- Writing one person leaves another person, already on file, untouched.
+  `test: INV-store-23`
+- A write that fails before it renames leaves the previous file exactly as it
+  was. `test: INV-store-24`
+- Two people connecting at the same moment both keep their tokens — the same
+  race `enrolment.ts` measured, on a file that cannot afford to lose either
+  side of it. `test: INV-store-25`
+- The file on disk is created readable only by the owning process.
+  `test: INV-store-26`
+- It stays that way across a second write, not just the first — `mode` on
+  `writeFile` only applies when the call creates the file, so this is checked
+  again rather than assumed. `test: INV-store-27`
+- Deleting a person removes them; a later read reports `undefined`.
+  `test: INV-store-28`
+- Deleting a person who was never connected is not an error.
+  `test: INV-store-29`
+- Deleting one person leaves another person, already on file, untouched.
+  `test: INV-store-30`
+- A failure to read a corrupt file reports the path, never the contents that
+  failed to parse. `test: INV-store-31`
+- Nothing here writes to `console.log`, `console.warn` or `console.error`,
+  across a write, a read, a delete, and a corrupt read. `test: INV-store-32`
+- A token taken off the disk without the key is noise. `0600` on an encrypted
+  volume already stops another process on the box; it does not stop a snapshot,
+  a backup, or a copy taken by anything that could read the file — and those
+  travel. The key lives in the environment and never on the volume. It buys
+  nothing against something that compromises the running process, which has the
+  key by definition. `test: INV-store-33`
+- A file edited by hand fails to open rather than opening wrong. A store that
+  returns a mangled token silently is worse than one that refuses.
+  `test: INV-store-34`
+- A key that is not a key is refused rather than stretched: a short key quietly
+  padded produces a file that looks encrypted and is not. `test: INV-store-35`
+- Every file that exists and cannot be used is the same kind of problem, and
+  says which path. The startup check refuses to run on that type and rethrows
+  anything else — it caught a wrong key and a plaintext file while letting a
+  truncated one, an empty one and a directory through to a stack trace, which is
+  the unactionable failure it existed to prevent. A file that is simply absent
+  is still nobody, not a fault. `test: INV-store-36`
+- A write that failed once does not disable every write after it. `writes =
+  writes.then(...)` looks like a queue and behaves like a fuse: one rejection and
+  every later `.then` skips its callback, re-throwing the first error forever. A
+  transient EACCES on the volume would have disabled connecting, disconnecting
+  and the dropping of dead credentials for the life of the process, long after
+  the disk recovered and with nothing said. `enrolment.ts` had the same fuse and
+  the same fix. `test: INV-store-37`
+

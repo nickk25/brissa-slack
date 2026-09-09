@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { test } from 'node:test'
 import { readChannels, readConfig, readReaders } from './config.ts'
 
@@ -98,4 +99,93 @@ test('INV-app-84 enrolment has somewhere to live, and the environment can move i
 
   const onAVolume = readConfig({ ...complete, BRISSA_ENROLMENT_PATH: '/data/enrolment.json' })
   assert.ok(onAVolume.ok && onAVolume.config.enrolmentPath === '/data/enrolment.json')
+})
+
+test('INV-app-102 OAuth is configured wholly or not at all', async () => {
+  // A link built from a client id with no secret behind it walks somebody
+  // through Slack's consent screen to a callback that cannot complete. "Not set
+  // up" is a better answer than that, so a partial configuration is none.
+  const off = readConfig(complete)
+  assert.ok(off.ok && off.config.oauth === undefined)
+
+  const half = readConfig({ ...complete, SLACK_CLIENT_ID: '123.456' })
+  assert.ok(half.ok && half.config.oauth === undefined, 'an id without a secret is not a configuration')
+
+  // The signing secret counts as part of it: a `state` signed with an empty
+  // string is not signed, and anyone could mint one.
+  const noSecret = readConfig({ ...complete, SLACK_CLIENT_ID: '1', SLACK_CLIENT_SECRET: 's', BRISSA_PUBLIC_URL: 'https://x.test' })
+  assert.ok(noSecret.ok && noSecret.config.oauth === undefined, 'no signing secret is not a configuration')
+
+  // The encryption key counts too: OAuth being on is the moment Brissa starts
+  // holding credentials that are not its own, and storing those in the clear is
+  // not a thing to fall back to.
+  const noKey = readConfig({
+    ...complete,
+    SLACK_SIGNING_SECRET: 's',
+    SLACK_CLIENT_ID: '1',
+    SLACK_CLIENT_SECRET: 's',
+    BRISSA_PUBLIC_URL: 'https://x.test',
+  })
+  assert.ok(noKey.ok && noKey.config.oauth === undefined, 'no encryption key is not a configuration')
+
+  const whole = readConfig({
+    ...complete,
+    // A real 32 bytes. The old fixture was 44 characters of 'a', which decodes
+    // to 33 — the store would have refused it, and only the config test's never
+    // handing it to the store kept that hidden.
+    BRISSA_TOKENS_KEY: randomBytes(32).toString('base64'),
+    SLACK_SIGNING_SECRET: 'a-signing-secret',
+    SLACK_CLIENT_ID: '123.456',
+    SLACK_CLIENT_SECRET: 'shh',
+    // A trailing slash here becomes a double slash in the redirect URI, and
+    // Slack compares that string exactly against what app settings hold.
+    BRISSA_PUBLIC_URL: 'https://brissa.fly.dev/',
+  })
+  assert.ok(whole.ok)
+  assert.deepEqual(whole.config.oauth, {
+    clientId: '123.456',
+    clientSecret: 'shh',
+    publicUrl: 'https://brissa.fly.dev',
+  })
+})
+
+test('INV-app-103 credentials and preferences are kept in different files', async () => {
+  // Merging them for tidiness would put a bearer credential wherever a language
+  // preference is convenient to read.
+  // Asserting two default literals differ proves nothing; what matters is that
+  // pointing them at one file is refused rather than quietly accepted.
+  const same = readConfig({
+    ...complete,
+    BRISSA_ENROLMENT_PATH: '/data/everything.json',
+    BRISSA_TOKENS_PATH: '/data/everything.json',
+  })
+  assert.ok(!same.ok, 'one file for both must not start')
+  assert.ok(same.ok === false && same.problems.some((p) => p.includes('same file')))
+
+  const apart = readConfig(complete)
+  assert.ok(apart.ok)
+  assert.notEqual(apart.config.tokensPath, apart.config.enrolmentPath)
+})
+
+test('INV-app-111 a key that is set and wrong is a problem, not a stack trace', async () => {
+  // `createFileTokens` throws on a bad key, and it is called from the
+  // composition root outside any handler. So a mistyped BRISSA_TOKENS_KEY
+  // printed the config banner, then an uncaught exception, and Fly's
+  // `restart = always` turned that into a loop. The message was legible in the
+  // trace, but this is exactly the class of mistake `readConfig` exists to
+  // collect — somebody doing setup for the first time, pasting by hand.
+  const short = readConfig({ ...complete, BRISSA_TOKENS_KEY: 'dG9vLXNob3J0' })
+  assert.ok(!short.ok)
+  assert.ok(
+    short.problems.some((p) => p.includes('BRISSA_TOKENS_KEY')),
+    'the problem has to name the variable somebody has to go and fix',
+  )
+
+  // 44 characters of 'a' decodes to 33 bytes, not 32 — the near miss that a
+  // length check on the string rather than the bytes would wave through.
+  assert.ok(!readConfig({ ...complete, BRISSA_TOKENS_KEY: 'a'.repeat(44) }).ok)
+
+  // Absent is not wrong: it means OAuth is off, which is a working state.
+  assert.ok(readConfig(complete).ok)
+  assert.ok(readConfig({ ...complete, BRISSA_TOKENS_KEY: randomBytes(32).toString('base64') }).ok)
 })

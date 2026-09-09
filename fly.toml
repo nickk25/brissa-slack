@@ -1,13 +1,10 @@
 # Fly.io configuration for Brissa. See docs/DEPLOY.md for the commands that
 # use this file and for everything this file cannot say by itself.
 #
-# This has NOT been run through `fly deploy` or validated against Fly's own
-# schema checker — the agent that wrote it was told not to run `fly`/`flyctl`
-# at all. Treat it as a first draft for a human to `fly deploy` and adjust,
-# not as a proven-working config.
+# Validated with `flyctl config validate` and deployed. The app, the machine,
+# the volume and the secrets exist — see docs/DEPLOY.md for what was created.
 
-app = "brissa"           # placeholder — rename if "brissa" is already taken,
-                          # or run `fly apps create` first and match its name here
+app = "brissa"           # created 9 September 2026 in the `personal` org
 primary_region = "fra"   # Frankfurt. EU data residency for German clients —
                           # see docs/DECISIONS.md ("German embedded in
                           # English", the shortcut working "on a message
@@ -25,22 +22,64 @@ primary_region = "fra"   # Frankfurt. EU data residency for German clients —
   size   = "shared-cpu-1x"
   memory = "256mb"
 
-# Deliberately NO [[services]] block.
+# This USED TO say, at length, that there was deliberately no [[services]]
+# block here: Brissa opened a websocket OUTWARD to Slack (Socket Mode) and
+# accepted no inbound connections, so a service block would have been
+# inventing a port nothing listened on, and its absence was what kept
+# `auto_stop_machines` from having anything to act on — no traffic for the
+# proxy to watch, nothing to scale to zero, nothing to accidentally stop.
 #
-# Brissa opens a websocket OUTWARD to Slack (Socket Mode) and accepts no
-# inbound connections — see src/slack/socket.ts. A [[services]] block exists
-# to tell Fly's proxy which port to forward inbound traffic to and which
-# health check to poll; Brissa has neither. Adding one here would be
-# inventing a port that nothing listens on.
+# Per-user OAuth changed the premise that reasoning stood on: Slack now has to
+# redirect a browser back to a URL this app owns (src/app/server.ts), which
+# means something listens on a real port for the first time. A [[services]]
+# block is no longer "inventing" anything — it is naming a listener that
+# genuinely exists.
 #
-# That absence is also what keeps this machine always on. Fly's
-# `auto_stop_machines` / `auto_start_machines` scale-to-zero behaviour is
-# driven by the proxy watching a service's traffic — no [[services]], nothing
-# for that machinery to act on, nothing to accidentally stop this process.
-# Scaling this to zero would silently take Brissa offline: read
-# src/slack/socket.ts's own comments on `reconnect` for why a stopped process
-# looks exactly like a clean shutdown and says nothing about it.
-#
+# What it must NOT do is bring scale-to-zero back in through the side door.
+# The two features share a proxy but not a purpose: OAuth's port only ever
+# sees a browser, seconds at a time, during an install or a reconnect: it
+# looks exactly like the kind of traffic `auto_stop_machines` is designed to
+# read as "idle, stop it" — while the websocket Socket Mode holds open the
+# whole time would still need to be there when the very next message arrives.
+# Reproducing the old guarantee ("always on") now means asking Fly for it
+# explicitly, on purpose, rather than relying on there being nothing to ask:
+# `auto_stop_machines = false` and `min_machines_running = 1` below. A
+# machine stopped by the proxy is a Slack connection silently dropped — the
+# exact failure src/slack/socket.ts's `reconnect` comment describes, just
+# caused by the proxy instead of by Slack's own end of the socket.
+[[services]]
+  # Required once the app declares [processes]: Fly refuses a service that does
+  # not say which process it fronts, and only says so when asked. `flyctl config
+  # validate` caught this twice; reading the file caught it neither time.
+  processes     = ["app"]
+  internal_port = 8080
+  protocol       = "tcp"
+  auto_stop_machines  = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port     = 443
+    handlers = ["tls", "http"]
+
+  [[services.ports]]
+    port     = 80
+    handlers = ["http"]
+    # The callback URL carries an authorisation code. Served over port 80 it
+    # crosses the network in clear, and a code is worth exactly one exchange to
+    # whoever reads it first. Redirected rather than accepted.
+    force_https = true
+
+  # /healthz answers on its own, calling neither OAuth route — see
+  # src/app/server.ts and src/app/CLAUDE.md ("Listening: server.ts"). A check
+  # that could hang on a route it calls would lie about a different thing the
+  # moment that route was slow.
+  [[services.http_checks]]
+    interval = "15s"
+    timeout  = "5s"
+    method   = "get"
+    path     = "/healthz"
+
 # [[restart]] is the other half of "always on": if the process itself exits
 # (a crash, an unhandled rejection reaching top level — this repository's own
 # rule is "never swallow an error", so a real fault is meant to be visible,

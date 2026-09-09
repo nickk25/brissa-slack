@@ -377,16 +377,14 @@ an environment variable on somebody's machine — every new person meant editing
 that file and restarting the process, which does not scale past one and was the
 whole reason nobody else on the team could use Brissa. `enrol.ts` is that door:
 `/brissa es en` to say what you read, `/brissa` to see what Brissa currently
-thinks, `/brissa off` to stop. What is still missing is the wiring — nothing in
-`main.ts` points a real `Enrolment` at `handleEnrol` yet, so this is a finished
-flow with nobody calling it, the same state the HTTP path below was in before
-anybody deployed it.
+thinks, `/brissa off` to stop. `main.ts` points a real `Enrolment` at it, so
+unlike the HTTP path below this one is reachable by anybody in the workspace.
 
 `handleRequest` still has nothing pointed at it: `manifest.json` enables Socket
-Mode and declares no request URL, so Slack never POSTs. That is the right default
-for something nobody has deployed, and it does mean the HTTP path is finished
-before it is reachable.
-
+Mode and declares no request URL, so Slack never POSTs events. The HTTP path is
+finished and unreached, which is the right default for something nobody chose to
+expose. What *is* exposed is `server.ts` below — the listener OAuth needed, which
+`main.ts` starts — and it serves the callback and a health check, nothing else.
 And nothing counts anything. `report` prints a line to a terminal.
 
 ## Two things the anchor decides
@@ -486,4 +484,162 @@ one.
 - Enrolment has somewhere to live, and the environment can move it. The default
   is fine on a laptop and wrong on Fly, where a path outside a volume means every
   deploy forgets everybody. `test: INV-app-84`
+
+## Listening: `server.ts`, and the door OAuth needs
+
+Everything above this line runs with no port open at all — Socket Mode is
+outbound, so there has never been anything for a browser to reach. Per-user
+OAuth breaks that assumption: Slack has to redirect a browser back to a URL
+Brissa owns, so something has to be listening for it to land on.
+
+`server.ts` is that something, built the same way `http.ts` is: transport-thin
+and ignorant on purpose. It exposes exactly three routes —
+`GET /oauth/start`, `GET /oauth/callback`, `GET /healthz` — and knows nothing
+about what an OAuth exchange is, what a token looks like, or how `state` is
+signed. Those decisions arrive as `Routes`, an injected pair of functions this
+file calls without inspecting; the module that actually knows what `start`
+and `callback` do belongs to `src/slack` and `src/store`, not to this one.
+
+A browser is the client on this path, never Slack — the one place in
+`src/app` where that is true. `/oauth/callback`'s answer is plain text read by
+a person mid-installation, not a machine that retries on anything but 2xx, so
+it is never JSON and never a stack trace, and a failure is answered with one
+fixed message rather than whatever the thrown error or the query string
+happened to say. `code` and `state` are already sitting in the browser's
+history and in every proxy log between here and Slack by the time this code
+runs; this file's whole job on that path is refusing to make that worse — it
+never logs the request, and never repeats a query value or an exception's own
+text back into a response.
+
+`/healthz` calls neither route. A health check that awaited `start` or
+`callback` would be answering a question about them, not about whether this
+process is alive — the one thing `fly.toml` now needs `/healthz` to answer
+honestly, now that scale-to-zero no longer keeps this machine's absence from
+mattering (see `fly.toml` and `docs/DEPLOY.md`).
+
+`main.ts` is what joins `startServer` to a real `Routes`, and doing that needs
+`src/slack/oauth.ts` and `src/store/tokens.ts` — this module owns neither and
+assumes nothing about either beyond the shape of `Routes` itself.
+
+- `/healthz` answers without calling either route, so it cannot hang on what
+  they do. `test: INV-app-85`
+- `/oauth/start` redirects to the location `start()` returns. `test: INV-app-86`
+- `/oauth/callback` hands the callback exactly the query Slack sent, and
+  answers with whatever it returns. `test: INV-app-87`
+- The callback's answer is served as plain text, whatever its body looks
+  like — never JSON. `test: INV-app-88`
+- An unknown path gets 404 and says nothing about what routes do exist.
+  `test: INV-app-89`
+- A method other than GET on a known path is treated the same as an unknown
+  path — nothing here accepts anything else. `test: INV-app-90`
+- A callback that throws answers with one fixed message, never its own text
+  or the query it was given — an exception is exactly where a `code` or a
+  `state` value turns up by accident. `test: INV-app-91`
+- The server closes cleanly, even with a request already answered on a
+  keep-alive connection nobody ended explicitly. `test: INV-app-92`
+- Nothing about a callback request reaches the console, code and state
+  included. `test: INV-app-93`
+- A callback that throws says so on the console — the error's name and nothing
+  else. Without it a failing `tokens.write` produced no output at all: the
+  browser was told to try again, trying again failed identically, and there is
+  no alerting on Fly to notice either. The name only, because the rule above
+  still holds. `test: INV-app-112`
+
+## Connecting an account, and the one line the flow rests on
+
+`connect.ts` is how each person authorises their own Slack account, so
+`/translate` reads a channel as *them* rather than as whoever set Brissa up.
+
+**The link is minted, not requested.** A browser arriving at a public URL
+carries no Slack identity, so there is nothing there to bind a flow to. It is
+`/brissa connect` that mints it — Slack has already told us who asked — and it
+comes back in an ephemeral only they can see. That is why no route here starts a
+flow: there is nowhere honest to start one from.
+
+**The record is keyed by Slack's answer, never by the state's claim.** That is
+the guard that makes credential theft impossible: whatever a link said, a token
+can only ever be filed under the person who actually consented.
+
+**`sameAccount` sits on top of it**, and buys something smaller but real. A
+signed `state` proves only that Brissa minted it, not whose flow it is, so an
+attacker can start the flow honestly and hand their link to somebody else.
+Without the check that person is silently connected by following a link they
+were given — a surprise, and consent to something they did not begin, but not
+access granted to anyone else.
+
+One adversarial review caught the missing binding. A second caught this section
+claiming the binding prevented theft, when the keying already did. Both are kept
+because the smaller guarantee is still worth having, and because a contract that
+overstates is the thing this repository is built to refuse.
+
+**Disconnecting is two things.** Forgetting drops Brissa's copy; revoking tells
+Slack the credential is finished with. Somebody told "disconnected" while their
+token still authorises reads has been told something false. Both happen — and
+the local copy goes even when Slack refuses, because a credential kept *because
+revoking it failed* is the worst of the three outcomes.
+
+- Consent is filed under whoever Slack says gave it, and a flow somebody did
+  not begin is refused rather than silently completed. `test: INV-app-94`
+- An honest authorisation is stored against the person who gave it.
+  `test: INV-app-95`
+- A state that has expired is refused, and says which kind of refusal it is —
+  one is somebody who left a tab open over lunch and can try again, the other is
+  not. `test: INV-app-96`
+- Somebody saying no is not a failure. Reading `access_denied` as a fault would
+  log an incident every time a person changed their mind, which they are
+  entitled to do. `test: INV-app-97`
+- Nothing is stored when Slack refuses the exchange. `test: INV-app-98`
+- The link carries the identity of whoever asked for it, and asks for user
+  scopes only — the bot is already installed. `test: INV-app-99`
+- Disconnecting drops the copy even when Slack refuses to revoke.
+  `test: INV-app-100`
+- Disconnecting somebody who never connected is not an error. `test: INV-app-101`
+- OAuth is configured wholly or not at all. A link built from a client id with
+  no secret behind it walks somebody through Slack's consent screen to a
+  callback that cannot complete; "not set up" is a better answer than that.
+  `test: INV-app-102`
+- Credentials and preferences are kept in different files, so tidiness cannot
+  put a bearer token wherever a language preference is convenient to read.
+  `test: INV-app-103`
+- A `BRISSA_TOKENS_KEY` that is set and wrong is collected as a problem like
+  any other, not thrown from the composition root. It used to print the config
+  banner and then an uncaught stack trace, which `restart = always` turned into
+  a loop. An empty key stays a working state: it means OAuth is off.
+  `test: INV-app-111`
+- A request target Node accepts and `URL` refuses does not take the process
+  down. Node's HTTP parser is more permissive than WHATWG URL and this port is
+  public; `GET http://[::1 HTTP/1.1` threw where nothing awaited it, and the
+  process that holds Brissa's websocket exited. `restart = always` then made a
+  script of it. `test: INV-app-104`
+- A route that throws is answered, not left to take the process with it — and
+  nothing of the fault reaches the browser. The guard was added after a
+  malformed request target killed the process and then left untested, which
+  mutation testing found rather than review. `test: INV-app-105`
+- A request Node cannot even parse does not succeed, and the process survives
+  it. Weaker than it first read, and said so: Node's own default already answers
+  400, so this held with our handler deleted. What is genuinely ours is that the
+  process is still there afterwards — it holds Brissa's websocket.
+  `test: INV-app-106`
+- A credential Slack has stopped honouring is dropped, not left on disk.
+  Somebody who revoked Brissa in their own settings would otherwise be answered
+  "could not read this channel" indefinitely, while a token nobody can use sits
+  on the volume and the one action that fixes it is never suggested.
+  `test: INV-app-107`
+- An ordinary read failure leaves the credential alone. A closed list rather
+  than a substring search: dropping a working token over a rate limit would log
+  somebody out for being busy. `test: INV-app-108`
+- Disconnecting tells Slack, and says so only when Slack agreed. Mutation found
+  that nothing exercised a successful revocation — "disconnect revokes" was
+  asserted only in the case where it does not, and the difference is whether the
+  person is told their access is withdrawn or told to go and check.
+  `test: INV-app-109`
+- A callback with no state is refused before anything is exchanged. Slack always
+  sends one back, so this fires only for a request somebody made up — which is
+  exactly the request that must not reach an exchange. `test: INV-app-110`
+- A refusal that came from the exchange carries what Slack said. `bad_redirect_uri`
+  — a redirect URL that does not match app settings, the commonest setup mistake
+  there is and one the operator can fix — otherwise reads in the log exactly
+  like a Slack outage, which they cannot. Only the exchange has anything to add:
+  a refusal Brissa reached on its own knows why from `because` alone.
+  `test: INV-app-113`
 

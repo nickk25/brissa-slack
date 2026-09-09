@@ -22,6 +22,10 @@ import type { Language } from '../core/ports.ts'
 export type EnrolArgument =
   | { readonly kind: 'query' }
   | { readonly kind: 'off' }
+  /** Authorise your own Slack account, so `/translate` reads as you. */
+  | { readonly kind: 'connect' }
+  /** Undo that: Brissa forgets its copy and tells Slack to revoke it. */
+  | { readonly kind: 'disconnect' }
   /** In the order given: `reads[0]` is the language a translation is made into. */
   | { readonly kind: 'set'; readonly reads: readonly Language[] }
 
@@ -95,7 +99,14 @@ function parseArgument(text: string): ArgumentRead {
   const tokens = text.trim().split(/\s+/).filter(Boolean)
 
   if (tokens.length === 0) return { ok: true, argument: { kind: 'query' } }
-  if (tokens.length === 1 && tokens[0]?.toLowerCase() === 'off') return { ok: true, argument: { kind: 'off' } }
+  if (tokens.length === 1) {
+    // Words, not language codes. A two-letter check would have caught `off`
+    // before this if it were one, which is why these are compared whole.
+    const word = tokens[0]?.toLowerCase()
+    if (word === 'off') return { ok: true, argument: { kind: 'off' } }
+    if (word === 'connect') return { ok: true, argument: { kind: 'connect' } }
+    if (word === 'disconnect') return { ok: true, argument: { kind: 'disconnect' } }
+  }
 
   const reads: Language[] = []
   for (const token of tokens) {

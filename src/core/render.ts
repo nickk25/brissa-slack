@@ -263,6 +263,7 @@ export type Notice =
   | 'nobody-knows-you'
   | 'translation-failed'
   | 'not-your-account'
+  | 'reconnect-needed'
   | 'cannot-read-here'
 
 const NOTICES: Record<Notice, string> = {
@@ -278,11 +279,19 @@ const NOTICES: Record<Notice, string> = {
   // The honest version of a real limitation. Reading a channel needs somebody's
   // account, and right now Brissa holds exactly one — so for everybody else this
   // command would read as a colleague, which is not a thing to do quietly.
+  // Now that connecting is possible, this says how rather than only that it is
+  // refused. A refusal with no way forward is a dead end wearing an explanation.
   'not-your-account':
-    '`/translate` reads history with one person\'s account, and it is not yours. The message shortcut on any message works for everybody.',
+    'Run `/brissa connect` to let Brissa read channels as you. Until then `/translate` reads with somebody else\'s account, which it will not do. The message shortcut on any message works for everybody either way.',
   // Slack refused the read: a rate limit, an expired token, a channel that
   // account is not in. Named rather than swallowed, because from the outside it
   // is indistinguishable from Brissa being broken.
+  // Told apart from a generic read failure on purpose. Somebody who revoked
+  // Brissa in their own Slack settings, or whose token simply expired, would
+  // otherwise be answered "could not read this channel" forever with nothing
+  // suggesting the one thing that fixes it.
+  'reconnect-needed':
+    'Your Slack authorisation is no longer valid — it may have been revoked or expired. Run `/brissa connect` to grant it again.',
   'cannot-read-here': 'Could not read this channel. The shortcut on a single message still works.',
 }
 
