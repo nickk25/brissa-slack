@@ -53,13 +53,25 @@ test('INV-slack-59 a bad status and a dropped connection are both reported, neve
   const refused = createSlackHistory('xoxp-secret', respond({}, 429))
   assert.deepEqual(await refused.read('C-berlin', 5), { ok: false, detail: 'http_429' })
 
+  // Classified, never quoted. This call carries a live user token in its header,
+  // and an error message is a string somebody else wrote — some HTTP stacks put
+  // the whole request, headers included, into it. This test used to assert the
+  // message survived into `detail`, which is exactly the leak.
   const exploding = (async () => {
-    throw new Error('ECONNRESET')
+    throw new TypeError('fetch failed: GET https://slack.com/... authorization: Bearer xoxp-secret')
   }) as unknown as typeof fetch
   const dropped = createSlackHistory('xoxp-secret', exploding)
   const result = await dropped.read('C-berlin', 5)
-  assert.equal(result.ok, false)
-  assert.ok(!result.ok && result.detail.includes('ECONNRESET'))
+
+  assert.deepEqual(result, { ok: false, detail: 'transport: network' })
+  assert.ok(!JSON.stringify(result).includes('xoxp-secret'))
+
+  // A malformed body is its own word, because it means Slack was reached.
+  const garbled = (async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected token') } })) as unknown as typeof fetch
+  assert.deepEqual(await createSlackHistory('xoxp-secret', garbled).read('C-berlin', 5), {
+    ok: false,
+    detail: 'transport: not-json',
+  })
 })
 
 test('INV-slack-60 the call reads with the user token and never posts anything', async () => {

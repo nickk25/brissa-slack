@@ -350,7 +350,11 @@ to the constant in `command.ts` itself.
 - A message with no `user` still has an author, the same fallback the shortcut
   and the events adapter both use. `test: INV-slack-57`
 - Slack refusing with a 200 is reported as data. `test: INV-slack-58`
-- A bad status and a dropped connection are both reported, never thrown.
+- A bad status and a dropped connection are both reported, never thrown — and a
+  transport failure is **classified, never quoted**. This call carries a live
+  user token in its header, and an error message is a string somebody else
+  wrote; some HTTP stacks put the whole request, headers included, into it.
+  Three words from a closed list are enough to act on.
   `test: INV-slack-59`
 - The call reads with the user token and never posts anything — a GET, no
   body, `conversations.history` and nothing else. `test: INV-slack-60`
@@ -559,7 +563,11 @@ actually promise for a value it did not create.
   token. `test: INV-slack-91`
 - Slack refusing with a 200 is treated as a refusal, not a success.
   `test: INV-slack-92`
-- A bad status and a dropped connection are both reported, never thrown.
+- A bad status and a dropped connection are both reported, never thrown — and a
+  transport failure is **classified, never quoted**. This call carries a live
+  user token in its header, and an error message is a string somebody else
+  wrote; some HTTP stacks put the whole request, headers included, into it.
+  Three words from a closed list are enough to act on.
   `test: INV-slack-93`
 - A success response is refused by name unless every one of its fields is a
   real, non-empty string — missing, empty, `null` and wrongly-typed all

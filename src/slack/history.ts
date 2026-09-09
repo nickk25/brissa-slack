@@ -128,11 +128,22 @@ export function createSlackHistory(userToken: string, fetchImpl: typeof fetch = 
           .slice(0, limit)
         return { ok: true, messages }
       } catch (err) {
-        // A DNS failure, a dropped socket, a body that is not JSON. Reported
-        // as a refusal rather than thrown, because the caller's whole design
-        // is that a translation which failed to appear must be visible as
-        // such.
-        return { ok: false, detail: `transport: ${String((err as Error)?.message ?? err)}` }
+        // A DNS failure, a dropped socket, a body that is not JSON. Reported as
+        // a refusal rather than thrown, because the caller's whole design is
+        // that a translation which failed to appear must be visible as such.
+        //
+        // **Classified, never quoted.** This call carries a live user token in
+        // its header, and an error message is a string somebody else wrote —
+        // some HTTP stacks put the request, headers included, into it. Reading
+        // `err.message` here would put that string into a returned `detail`,
+        // and from there wherever a caller decides to print outcomes.
+        //
+        // Three words, chosen from a closed list, are enough to act on: it did
+        // not reach Slack, it reached Slack and came back malformed, or neither.
+        // `src/slack/oauth.ts` holds the same discipline for the same reason.
+        const because =
+          err instanceof TypeError ? 'network' : err instanceof SyntaxError ? 'not-json' : 'unknown'
+        return { ok: false, detail: `transport: ${because}` }
       }
     },
   }
