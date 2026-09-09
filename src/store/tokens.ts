@@ -12,7 +12,7 @@
  *
  * `src/core/tokens.ts` is being written alongside this file by another agent
  * and is not imported here — importing it would mean editing this module
- * against a port that might still be in motion. `Tokens` and `TokenRecord`
+ * against a port that might still be in motion. `Tokens` and `UserTokenRecord`
  * below are this module's own account of the shape it needs; the report for
  * this change says so explicitly, so the two can be reconciled by hand
  * rather than by one silently overwriting the other.
@@ -31,30 +31,21 @@ import { dirname } from 'node:path'
  * `Enrolment` in `src/core/enrolment.ts`, with the one addition a credential
  * needs that a preference does not: a way to remove it.
  */
-export interface TokenRecord {
-  readonly teamId: string
-  readonly userId: string
-  /** The Slack token itself. Never logged, never echoed, never thrown as part of an error. */
-  readonly accessToken: string
-}
+/**
+ * The record is the port's, not this file's.
+ *
+ * It was declared here once, independently, while `src/core/tokens.ts` was
+ * being written in parallel — and the two disagreed about what the field
+ * holding the credential was called. Importing it means the next disagreement
+ * is a compile error rather than something discovered by whoever wires them
+ * together.
+ */
+import type { Tokens, UserTokenRecord } from '../core/tokens.ts'
+export type { UserTokenRecord }
 
-export interface Tokens {
-  /** What this person has on file, or `undefined` if they never connected. */
-  read(teamId: string, userId: string): Promise<TokenRecord | undefined>
-  /** Replaces whatever this person had on file with `record`. */
-  write(record: TokenRecord): Promise<void>
-  /**
-   * Removes this person's record, if there was one. Disconnecting has to be
-   * able to leave nothing behind — a store that can only add is a store that
-   * keeps a credential after the person it belongs to withdrew consent.
-   * Deleting a record that was never there is not an error: the end state
-   * ("nothing on file for this person") is identical either way.
-   */
-  delete(teamId: string, userId: string): Promise<void>
-}
 
-/** One row per `(teamId, userId)`, the same key `TokenRecord` is declared by. */
-type OnDisk = Record<string, TokenRecord>
+/** One row per `(teamId, userId)`, the same key `UserTokenRecord` is declared by. */
+type OnDisk = Record<string, UserTokenRecord>
 
 const key = (teamId: string, userId: string): string => `${teamId}:${userId}`
 
@@ -132,12 +123,12 @@ export function createFileTokens(path: string): Tokens {
   let writes: Promise<void> = Promise.resolve()
 
   return {
-    async read(teamId: string, userId: string): Promise<TokenRecord | undefined> {
+    async read(teamId: string, userId: string): Promise<UserTokenRecord | undefined> {
       const all = await readAll(path)
       return all[key(teamId, userId)]
     },
 
-    async write(record: TokenRecord): Promise<void> {
+    async write(record: UserTokenRecord): Promise<void> {
       // Serialised for the reason `enrolment.ts` measured rather than
       // guessed at: two connections completing in the same moment both read
       // the same file, both add themselves to their own copy, and the
@@ -159,7 +150,7 @@ export function createFileTokens(path: string): Tokens {
       return writes
     },
 
-    async delete(teamId: string, userId: string): Promise<void> {
+    async forget(teamId: string, userId: string): Promise<void> {
       // Chained onto the same queue as `write`, not a separate one: a
       // disconnect racing a connect must resolve in whichever order they
       // were actually called, not in whatever order two independent queues

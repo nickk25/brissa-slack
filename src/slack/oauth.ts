@@ -350,3 +350,35 @@ export async function exchangeCode(params: ExchangeParams, fetchImpl: typeof fet
     return { ok: false, detail: `transport: ${kind}` }
   }
 }
+
+/**
+ * Tell Slack the credential is finished with.
+ *
+ * `Tokens.forget` drops Brissa's copy; this is the other half, and without it a
+ * "disconnect" means only that Brissa stopped holding a token which still
+ * works. Anything offering somebody that word has to do both — the copy nobody
+ * holds is precisely the one nobody thinks to look for later.
+ *
+ * Best effort by design. If Slack refuses, the local copy must still go: a
+ * credential kept because revoking it failed is the worst of the three
+ * outcomes. The result says which happened so the caller can be honest about
+ * it rather than silently optimistic.
+ */
+export async function revokeAtSlack(
+  userToken: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ readonly revoked: boolean; readonly because?: 'refused' | 'unreachable' }> {
+  try {
+    const response = await fetchImpl('https://slack.com/api/auth.revoke', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${userToken}` },
+    })
+    if (!response.ok) return { revoked: false, because: 'refused' }
+    const body = (await response.json()) as { ok?: boolean; revoked?: boolean }
+    return body.ok === true && body.revoked === true ? { revoked: true } : { revoked: false, because: 'refused' }
+  } catch {
+    // Deliberately not reading the error: the same discipline `exchangeCode`
+    // holds, on a call that carries a live bearer token in its header.
+    return { revoked: false, because: 'unreachable' }
+  }
+}

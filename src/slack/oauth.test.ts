@@ -9,6 +9,7 @@ import {
   sameAccount,
   signState,
   STATE_MAX_AGE_MS,
+  revokeAtSlack,
   USER_SCOPES,
 } from './oauth.ts'
 
@@ -228,4 +229,23 @@ test('INV-slack-96 a transport failure is classified from a fixed vocabulary, ne
     throw `client_secret=${EXCHANGE_PARAMS.clientSecret}`
   }) as unknown as typeof fetch
   assert.deepEqual(await exchangeCode(EXCHANGE_PARAMS, throwsAString), { ok: false, detail: 'transport: unknown' })
+})
+
+test('INV-slack-97 forgetting a credential is not revoking it, so this is the other half', async () => {
+  // `Tokens.forget` drops Brissa's copy and the token keeps working. Somebody
+  // told "disconnected" while their credential still authorises reads has been
+  // told something false.
+  const ok = (async () => ({ ok: true, status: 200, json: async () => ({ ok: true, revoked: true }) })) as unknown as typeof fetch
+  assert.deepEqual(await revokeAtSlack('xoxp-x', ok), { revoked: true })
+
+  // Slack answering 200 with ok:false is a refusal, not a success.
+  const refused = (async () => ({ ok: true, status: 200, json: async () => ({ ok: false, error: 'invalid_auth' }) })) as unknown as typeof fetch
+  assert.deepEqual(await revokeAtSlack('xoxp-x', refused), { revoked: false, because: 'refused' })
+
+  // And a transport failure never reads the error, on a call whose header
+  // carries a live bearer token.
+  const exploding = (async () => { throw new Error('connect ECONNREFUSED 1.2.3.4:443 token=xoxp-leak') }) as unknown as typeof fetch
+  const out = await revokeAtSlack('xoxp-x', exploding)
+  assert.deepEqual(out, { revoked: false, because: 'unreachable' })
+  assert.ok(!JSON.stringify(out).includes('xoxp-leak'))
 })

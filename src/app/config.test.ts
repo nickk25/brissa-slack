@@ -99,3 +99,43 @@ test('INV-app-84 enrolment has somewhere to live, and the environment can move i
   const onAVolume = readConfig({ ...complete, BRISSA_ENROLMENT_PATH: '/data/enrolment.json' })
   assert.ok(onAVolume.ok && onAVolume.config.enrolmentPath === '/data/enrolment.json')
 })
+
+test('INV-app-102 OAuth is configured wholly or not at all', async () => {
+  // A link built from a client id with no secret behind it walks somebody
+  // through Slack's consent screen to a callback that cannot complete. "Not set
+  // up" is a better answer than that, so a partial configuration is none.
+  const off = readConfig(complete)
+  assert.ok(off.ok && off.config.oauth === undefined)
+
+  const half = readConfig({ ...complete, SLACK_CLIENT_ID: '123.456' })
+  assert.ok(half.ok && half.config.oauth === undefined, 'an id without a secret is not a configuration')
+
+  // The signing secret counts as part of it: a `state` signed with an empty
+  // string is not signed, and anyone could mint one.
+  const noSecret = readConfig({ ...complete, SLACK_CLIENT_ID: '1', SLACK_CLIENT_SECRET: 's', BRISSA_PUBLIC_URL: 'https://x.test' })
+  assert.ok(noSecret.ok && noSecret.config.oauth === undefined, 'no signing secret is not a configuration')
+
+  const whole = readConfig({
+    ...complete,
+    SLACK_SIGNING_SECRET: 'a-signing-secret',
+    SLACK_CLIENT_ID: '123.456',
+    SLACK_CLIENT_SECRET: 'shh',
+    // A trailing slash here becomes a double slash in the redirect URI, and
+    // Slack compares that string exactly against what app settings hold.
+    BRISSA_PUBLIC_URL: 'https://brissa.fly.dev/',
+  })
+  assert.ok(whole.ok)
+  assert.deepEqual(whole.config.oauth, {
+    clientId: '123.456',
+    clientSecret: 'shh',
+    publicUrl: 'https://brissa.fly.dev',
+  })
+})
+
+test('INV-app-103 credentials and preferences are kept in different files', async () => {
+  // Merging them for tidiness would put a bearer credential wherever a language
+  // preference is convenient to read.
+  const c = readConfig(complete)
+  assert.ok(c.ok)
+  assert.notEqual(c.config.tokensPath, c.config.enrolmentPath)
+})

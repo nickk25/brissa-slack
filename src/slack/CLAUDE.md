@@ -569,4 +569,10 @@ actually promise for a value it did not create.
   `test: INV-slack-95`
 - A transport failure is classified from a fixed vocabulary, never by
   echoing the thrown value's own message or name. `test: INV-slack-96`
+- Forgetting a credential is not revoking it, so this is the other half.
+  `Tokens.forget` drops Brissa's copy and the token keeps working at Slack;
+  somebody told "disconnected" while theirs still authorises reads has been told
+  something false. Best effort by design — if Slack refuses, the local copy must
+  still go, because a credential kept because revoking it failed is the worst of
+  the three outcomes. `test: INV-slack-97`
 

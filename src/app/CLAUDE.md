@@ -545,3 +545,56 @@ either beyond the shape of `Routes` itself.
 - Nothing about a callback request reaches the console, code and state
   included. `test: INV-app-93`
 
+## Connecting an account, and the one line the flow rests on
+
+`connect.ts` is how each person authorises their own Slack account, so
+`/translate` reads a channel as *them* rather than as whoever set Brissa up.
+
+**The link is minted, not requested.** A browser arriving at a public URL
+carries no Slack identity, so there is nothing there to bind a flow to. It is
+`/brissa connect` that mints it — Slack has already told us who asked — and it
+comes back in an ephemeral only they can see. That is why no route here starts a
+flow: there is nowhere honest to start one from.
+
+**The identity is Slack's answer, never the state's claim.** A signed `state`
+proves only that Brissa minted it, not whose flow it belongs to. An attacker can
+start the flow honestly, obtain a validly signed state carrying their own
+identity, and send that link to somebody else — whose real consent then arrives
+attached to the attacker's name, and whose channels `/translate` would then read
+for them. An adversarial review of `oauth.ts` caught this before any of it was
+wired.
+
+`sameAccount` refuses it, and it is called **here** rather than left to whoever
+wires this up, because a check somebody has to remember is a check that will one
+day be forgotten.
+
+**Disconnecting is two things.** Forgetting drops Brissa's copy; revoking tells
+Slack the credential is finished with. Somebody told "disconnected" while their
+token still authorises reads has been told something false. Both happen — and
+the local copy goes even when Slack refuses, because a credential kept *because
+revoking it failed* is the worst of the three outcomes.
+
+- Consent is filed under whoever Slack says gave it, not whoever the link
+  claimed. `test: INV-app-94`
+- An honest authorisation is stored against the person who gave it.
+  `test: INV-app-95`
+- A state that has expired is refused, and says which kind of refusal it is —
+  one is somebody who left a tab open over lunch and can try again, the other is
+  not. `test: INV-app-96`
+- Somebody saying no is not a failure. Reading `access_denied` as a fault would
+  log an incident every time a person changed their mind, which they are
+  entitled to do. `test: INV-app-97`
+- Nothing is stored when Slack refuses the exchange. `test: INV-app-98`
+- The link carries the identity of whoever asked for it, and asks for user
+  scopes only — the bot is already installed. `test: INV-app-99`
+- Disconnecting drops the copy even when Slack refuses to revoke.
+  `test: INV-app-100`
+- Disconnecting somebody who never connected is not an error. `test: INV-app-101`
+- OAuth is configured wholly or not at all. A link built from a client id with
+  no secret behind it walks somebody through Slack's consent screen to a
+  callback that cannot complete; "not set up" is a better answer than that.
+  `test: INV-app-102`
+- Credentials and preferences are kept in different files, so tidiness cannot
+  put a bearer token wherever a language preference is convenient to read.
+  `test: INV-app-103`
+

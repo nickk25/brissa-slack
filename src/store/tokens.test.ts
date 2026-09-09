@@ -3,15 +3,15 @@ import { chmod, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { createFileTokens, type TokenRecord } from './tokens.ts'
+import { createFileTokens, type UserTokenRecord } from './tokens.ts'
 
 /** A fresh directory per test, so no test can see another's file. */
 async function tmpDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'brissa-tokens-'))
 }
 
-const nick: TokenRecord = { teamId: 'T1', userId: 'U-nick', accessToken: 'xoxp-nick-secret' }
-const ana: TokenRecord = { teamId: 'T1', userId: 'U-ana', accessToken: 'xoxp-ana-secret' }
+const nick: UserTokenRecord = { teamId: 'T1', userId: 'U-nick', token: 'xoxp-nick-secret' }
+const ana: UserTokenRecord = { teamId: 'T1', userId: 'U-ana', token: 'xoxp-ana-secret' }
 
 test('INV-store-20 a person who has never connected reads back as undefined, not an error', async () => {
   const dir = await tmpDir()
@@ -26,7 +26,7 @@ test('INV-store-21 what was written is what comes back, keyed by team and user t
   await store.write(nick)
   // The same userId in a different team is a different record — the whole
   // reason the key is the pair rather than userId alone.
-  const sameUserOtherTeam: TokenRecord = { teamId: 'T2', userId: 'U-nick', accessToken: 'xoxp-other-team' }
+  const sameUserOtherTeam: UserTokenRecord = { teamId: 'T2', userId: 'U-nick', token: 'xoxp-other-team' }
   await store.write(sameUserOtherTeam)
 
   assert.deepEqual(await store.read('T1', 'U-nick'), nick)
@@ -68,7 +68,7 @@ test('INV-store-24 a write that fails before it renames leaves the previous file
   // the temp-file write itself fail, before any rename is attempted.
   await chmod(dir, 0o500)
   try {
-    await assert.rejects(() => store.write({ teamId: 'T1', userId: 'U-nick', accessToken: 'xoxp-new' }))
+    await assert.rejects(() => store.write({ teamId: 'T1', userId: 'U-nick', token: 'xoxp-new' }))
   } finally {
     await chmod(dir, 0o700)
   }
@@ -90,7 +90,7 @@ test('INV-store-25 two people connecting at the same moment both keep their toke
   const store = createFileTokens(path)
   const people = ['U-nick', 'U-ana', 'U-bo', 'U-cy']
 
-  await Promise.all(people.map((userId) => store.write({ teamId: 'T1', userId, accessToken: `xoxp-${userId}` })))
+  await Promise.all(people.map((userId) => store.write({ teamId: 'T1', userId, token: `xoxp-${userId}` })))
 
   for (const userId of people) {
     assert.ok(await store.read('T1', userId), `${userId} was lost`)
@@ -130,7 +130,7 @@ test('INV-store-28 deleting a person removes them; a later read reports undefine
   await store.write(nick)
   assert.notEqual(await store.read('T1', 'U-nick'), undefined)
 
-  await store.delete('T1', 'U-nick')
+  await store.forget('T1', 'U-nick')
   assert.equal(await store.read('T1', 'U-nick'), undefined)
   await rm(dir, { recursive: true, force: true })
 })
@@ -138,7 +138,7 @@ test('INV-store-28 deleting a person removes them; a later read reports undefine
 test('INV-store-29 deleting a person who was never connected is not an error', async () => {
   const dir = await tmpDir()
   const store = createFileTokens(join(dir, 'tokens.json'))
-  await assert.doesNotReject(() => store.delete('T1', 'U-stranger'))
+  await assert.doesNotReject(() => store.forget('T1', 'U-stranger'))
   await rm(dir, { recursive: true, force: true })
 })
 
@@ -148,7 +148,7 @@ test('INV-store-30 deleting one person leaves another person, already on file, u
   await store.write(nick)
   await store.write(ana)
 
-  await store.delete('T1', 'U-nick')
+  await store.forget('T1', 'U-nick')
   assert.equal(await store.read('T1', 'U-nick'), undefined)
   assert.deepEqual(await store.read('T1', 'U-ana'), ana)
   await rm(dir, { recursive: true, force: true })
@@ -192,7 +192,7 @@ test('INV-store-32 nothing here writes to console.log, console.warn or console.e
     const store = createFileTokens(path)
     await store.write(nick)
     await store.read('T1', 'U-nick')
-    await store.delete('T1', 'U-nick')
+    await store.forget('T1', 'U-nick')
 
     const corrupt = createFileTokens(corruptPath)
     await assert.rejects(() => corrupt.read('T1', 'U-nick'))

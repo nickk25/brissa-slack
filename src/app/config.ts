@@ -34,6 +34,32 @@ export interface Config {
    * volume, or every deploy forgets everybody.
    */
   readonly enrolmentPath: string
+  /**
+   * Where each person's own Slack token is kept, once they have connected one.
+   *
+   * A separate file from enrolment, and separate on purpose: one holds language
+   * preferences and the other holds bearer credentials. Merging them for
+   * tidiness would put a credential wherever a preference is convenient to read.
+   */
+  readonly tokensPath: string
+  /**
+   * Signs the OAuth `state`, and verifies Slack's own request signatures when
+   * anything arrives over HTTP.
+   *
+   * One secret with two uses rather than a second one nobody remembers to set —
+   * both are "prove this came from where it claims", and both are Slack's.
+   */
+  readonly signingSecret: string
+  /** What the HTTP server listens on. Fly forwards to it; nothing else uses it. */
+  readonly port: number
+  /**
+   * What per-person OAuth needs. All three or none: a half-configured flow
+   * hands somebody a link that cannot complete, which is worse than a command
+   * that says the feature is off.
+   */
+  readonly oauth:
+    | { readonly clientId: string; readonly clientSecret: string; readonly publicUrl: string }
+    | undefined
   readonly model: string
   readonly readers: readonly Reader[]
   readonly channels: readonly ChannelPolicy[]
@@ -82,6 +108,26 @@ export function readChannels(raw: string): ChannelPolicy[] {
  * runs is a decision recorded in `docs/DECISIONS.md` and measured by the eval —
  * not a default buried in an adapter.
  */
+/**
+ * The OAuth three, or nothing.
+ *
+ * Absent is a working state: `/brissa connect` says the feature is off and
+ * everything else carries on. What must not happen is a partial one — a link
+ * built from a client id with no secret behind it takes somebody through
+ * Slack's consent screen to a callback that cannot complete, which is a worse
+ * answer than "not set up".
+ */
+function oauthFrom(env: Record<string, string | undefined>) {
+  const clientId = env.SLACK_CLIENT_ID?.trim()
+  const clientSecret = env.SLACK_CLIENT_SECRET?.trim()
+  const publicUrl = env.BRISSA_PUBLIC_URL?.trim()
+  // The signing secret belongs in this list even though it is not an OAuth
+  // credential: it is what signs the `state`, and a state signed with an empty
+  // string is not signed at all. Anyone could then mint one.
+  if (!clientId || !clientSecret || !publicUrl || !env.SLACK_SIGNING_SECRET?.trim()) return undefined
+  return { clientId, clientSecret, publicUrl: publicUrl.replace(/\/+$/, '') }
+}
+
 export function readConfig(env: Record<string, string | undefined>): Configured {
   const problems: string[] = []
 
@@ -111,6 +157,10 @@ export function readConfig(env: Record<string, string | undefined>): Configured 
       appToken,
       userToken: env.SLACK_USER_TOKEN?.trim() || undefined,
       enrolmentPath: env.BRISSA_ENROLMENT_PATH?.trim() || 'data/enrolment.json',
+      tokensPath: env.BRISSA_TOKENS_PATH?.trim() || 'data/tokens.json',
+      signingSecret: env.SLACK_SIGNING_SECRET?.trim() ?? '',
+      port: Number(env.PORT?.trim()) || 8080,
+      oauth: oauthFrom(env),
       model: env.BRISSA_MODEL?.trim() || 'claude-sonnet-5',
       readers,
       channels,

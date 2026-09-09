@@ -6,6 +6,7 @@ const payload = (over: Record<string, unknown> = {}) => ({
   command: '/translate',
   text: '',
   channel_id: 'C-berlin',
+  team_id: 'T1',
   user_id: 'U-nick',
   response_url: 'https://hooks.slack.test/commands/T1/1/abc',
   ...over,
@@ -30,6 +31,7 @@ test('INV-slack-62 a slash command payload becomes the fields the app needs, def
   assert.deepEqual(read.command, {
     command: '/translate',
     channelId: 'C-berlin',
+    teamId: 'T1',
     invokedBy: 'U-nick',
     argument: { kind: 'latest' },
     responseUrl: 'https://hooks.slack.test/commands/T1/1/abc',

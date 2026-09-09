@@ -16,15 +16,19 @@ import { defaultTranslator } from '../llm/decide.ts'
 import { connectSocketMode } from '../slack/socket.ts'
 import { readCommand } from '../slack/command.ts'
 import { readEnrolCommand } from '../slack/enrol.ts'
+import { replyPrivately } from '../slack/shortcut.ts'
 import { createSlackHistory, whoOwns } from '../slack/history.ts'
 import { readShortcut } from '../slack/shortcut.ts'
 import { createSlackApi } from '../slack/web.ts'
 import { createFileEnrolment } from '../store/enrolment.ts'
+import { createFileTokens } from '../store/tokens.ts'
 import { createMemoryDirectory } from '../store/memory.ts'
 import { createMemorySeen } from '../store/seen.ts'
 import { readConfig } from './config.ts'
 import { handleCommand, refuseCommand } from './command.ts'
 import { ENROL_COMMAND, handleEnrol } from './enrol.ts'
+import { completeConnection, connectUrl, disconnect, type ConnectPorts } from './connect.ts'
+import { startServer } from './server.ts'
 import { handleShortcut } from './shortcut.ts'
 import { describe } from './report.ts'
 import { acceptEnvelope, type Work } from './http.ts'
@@ -88,6 +92,49 @@ export async function main(): Promise<void> {
   // survives if it is on a volume. Everything else Brissa knows — who has been
   // seen, what a channel's policy is — is still memory and still goes.
   const enrolment = createFileEnrolment(config.enrolmentPath)
+  const tokens = createFileTokens(config.tokensPath)
+
+  // Absent is a working state, and the whole flow is off rather than half on.
+  // `readConfig` already refuses a partial configuration for the same reason: a
+  // link built from an id with no secret behind it walks somebody through
+  // Slack's consent screen to a callback that cannot complete.
+  const connecting: ConnectPorts | undefined =
+    config.oauth === undefined
+      ? undefined
+      : {
+          config: {
+            clientId: config.oauth.clientId,
+            clientSecret: config.oauth.clientSecret,
+            redirectUri: `${config.oauth.publicUrl}/oauth/callback`,
+            // The same secret that proves a request came from Slack now also
+            // signs the state that binds one person's flow to them. One secret
+            // with two uses, rather than a second one nobody remembers to set.
+            stateSecret: config.signingSecret,
+          },
+          tokens,
+        }
+
+  if (connecting === undefined) {
+    console.log('  /brissa connect  off — SLACK_CLIENT_ID, SLACK_CLIENT_SECRET and BRISSA_PUBLIC_URL are needed together')
+  } else {
+    const running = await startServer(
+      {
+        // Nothing starts a flow here: a browser at a public URL carries no
+        // Slack identity, so `/brissa connect` mints the link instead.
+        start: () => ({ location: 'https://slack.com' }),
+        callback: async (query) => {
+          const done = await completeConnection(connecting, query)
+          console.log(`  oauth callback  ${done.kind === 'connected' ? 'connected' : `refused:${done.because}`}`)
+          return done.kind === 'connected'
+            ? { status: 200, body: 'Connected. You can close this tab and go back to Slack.' }
+            : { status: 400, body: 'That did not work. Go back to Slack and run /brissa connect again.' }
+        },
+      },
+      config.port,
+    )
+    console.log(`  listening    on ${config.port} for /oauth/callback and /healthz`)
+    process.once('SIGTERM', () => void running.close())
+  }
 
   const connection = connectSocketMode({
     appToken: config.appToken,
@@ -110,6 +157,41 @@ export async function main(): Promise<void> {
           console.log(`  /brissa refused: ${enrol.because}`)
           return
         }
+        // `connect` and `disconnect` are about a credential, not a preference,
+        // so they are answered here where the credential work is reachable.
+        const arg = enrol.command.argument
+        if (arg.kind === 'connect' || arg.kind === 'disconnect') {
+          const who = { teamId: enrol.command.teamId, userId: enrol.command.invokedBy }
+          void (async () => {
+            if (connecting === undefined) {
+              await replyPrivately(enrol.command.responseUrl, {
+                blocks: [],
+                text: 'Connecting your own account is not set up on this installation yet.',
+              })
+              return
+            }
+            if (arg.kind === 'connect') {
+              // Handed back privately: a link with somebody's identity signed
+              // into it is not a link to paste in a channel.
+              await replyPrivately(enrol.command.responseUrl, {
+                blocks: [],
+                text: `Authorise Brissa to read channels as you: ${connectUrl(connecting, who)}\n\nOnly you can see this link, and only you can use it.`,
+              })
+              console.log(`  ${who.teamId}  /brissa connect  link issued`)
+              return
+            }
+            const gone = await disconnect(connecting, who)
+            await replyPrivately(enrol.command.responseUrl, {
+              blocks: [],
+              text: gone.revokedAtSlack
+                ? 'Disconnected. Brissa has forgotten your token and Slack has revoked it.'
+                : 'Disconnected. Brissa has forgotten your token; Slack would not confirm the revocation, so check Apps in your Slack settings.',
+            })
+            console.log(`  ${who.teamId}  /brissa disconnect  revokedAtSlack=${gone.revokedAtSlack}`)
+          })()
+          return
+        }
+
         void handleEnrol({ enrolment }, enrol.command).then((outcome) => {
           console.log(`  ${enrol.command.teamId}  /brissa  ${outcome.kind}`)
         })
@@ -125,11 +207,22 @@ export async function main(): Promise<void> {
         if (read.responseUrl !== undefined) void refuseCommand(read.responseUrl, read.because)
         return
       }
-      void handleCommand({ ...work.ports, ...historyPorts }, read.command).then((outcome) => {
+      void (async () => {
+        // Whoever typed it, read as themselves. The single configured token is
+        // only a fallback for the person it belongs to — everybody else brings
+        // their own through `/brissa connect`, and until they do they are
+        // refused by name rather than served with somebody else's access.
+        const mine = await tokens.read(read.command.teamId, read.command.invokedBy)
+        const theirs =
+          mine === undefined
+            ? historyPorts
+            : { history: createSlackHistory(mine.token), historyOwner: read.command.invokedBy }
+
+        const outcome = await handleCommand({ ...work.ports, ...theirs }, read.command)
         const what = outcome.kind === 'noticed' ? `noticed:${outcome.notice}` : outcome.kind
         const why = 'detail' in outcome ? ` — ${outcome.detail}` : ''
         console.log(`  ${read.command.channelId}  /translate  ${what}${why}`)
-      })
+      })()
     },
     onInteractive: (payload) => {
       const read = readShortcut(payload)

@@ -90,11 +90,18 @@ export interface Tokens {
   /** Replaces whatever this person had on file with `record`. */
   write(record: UserTokenRecord): Promise<void>
   /**
-   * Removes whatever this person had on file, if anything. Idempotent:
-   * revoking somebody who was never enrolled, or revoking twice, is not an
-   * error — both leave the same "nothing on file" this port already treats
-   * as ordinary, the same answer `read` gives someone who never authorised
-   * at all.
+   * Removes whatever this person had on file, if anything.
+   *
+   * **Forgetting is not revoking, and the name says which one this is.** The
+   * credential keeps working at Slack after this returns; all that has changed
+   * is that Brissa no longer holds it. Anything offering somebody a
+   * "disconnect" has to do both, or it is telling them their access was
+   * withdrawn when it was only misplaced — and a token that outlives the copy
+   * of it is exactly the one nobody thinks to look for.
+   *
+   * Idempotent: forgetting somebody who never authorised, or forgetting twice,
+   * is not an error. Both leave the same "nothing on file" that `read` already
+   * treats as ordinary.
    */
-  revoke(teamId: string, userId: string): Promise<void>
+  forget(teamId: string, userId: string): Promise<void>
 }

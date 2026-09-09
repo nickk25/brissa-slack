@@ -15,6 +15,7 @@ const SPANISH = 'A mí también me viene bien, te escribo mañana.'
 const command = (argument: Argument, over: Partial<SlashCommand> = {}): SlashCommand => ({
   command: TRANSLATE_COMMAND,
   channelId: 'C-berlin',
+  teamId: 'T1',
   invokedBy: 'U-nick',
   argument,
   responseUrl: 'https://hooks.slack.test/x',
@@ -262,7 +263,9 @@ test('INV-app-68 nobody translates a channel with somebody else’s account', as
 
   assert.deepEqual(outcome, { kind: 'noticed', notice: 'not-your-account' })
   assert.equal(w.historyCalls(), 0)
-  assert.ok(w.sent[0]?.text.includes('not yours'))
+  // Refused, and told how to stop being refused — a refusal with no way
+  // forward is a dead end wearing an explanation.
+  assert.ok(w.sent[0]?.text.includes('/brissa connect'))
 })
 
 test('INV-app-69 an unverified account is refused too', async () => {
