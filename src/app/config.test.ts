@@ -1,39 +1,13 @@
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { test } from 'node:test'
-import { readChannels, readConfig, readReaders } from './config.ts'
+import { readChannels, readConfig } from './config.ts'
 
 const complete = {
   SLACK_BOT_TOKEN: 'xoxb-x',
   SLACK_APP_TOKEN: 'xapp-x',
   ANTHROPIC_API_KEY: 'sk-x',
-  BRISSA_READERS: 'U-nick:es,en',
 }
-
-test('INV-app-36 a reader is a person and the languages they read, in their order', async () => {
-  // The order is not decoration: the first is the language messages are
-  // translated into, so `es,en` and `en,es` are different people to serve.
-  assert.deepEqual(readReaders('U-nick:es,en;U-bo:DE').readers, [
-    { userId: 'U-nick', reads: ['es', 'en'] },
-    { userId: 'U-bo', reads: ['de'] },
-  ])
-})
-
-test('INV-app-37 a reader with no languages is refused rather than created', async () => {
-  // `shouldAsk` reads an empty list as "has not finished setting up" and stays
-  // silent — which from the outside is indistinguishable from Brissa being
-  // broken. Better to refuse to start than to start and say nothing.
-  const { readers, problems } = readReaders('U-nick:;U-bo:de')
-  assert.deepEqual(readers, [{ userId: 'U-bo', reads: ['de'] }])
-  assert.equal(problems.length, 1)
-  assert.ok(problems[0]?.includes('U-nick'))
-})
-
-test('INV-app-38 an entry that is not a reader says so by name', async () => {
-  const { readers, problems } = readReaders('nonsense;U-bo:de')
-  assert.deepEqual(readers, [{ userId: 'U-bo', reads: ['de'] }])
-  assert.ok(problems[0]?.includes('nonsense'))
-})
 
 test('INV-app-39 a channel is off unless it is listed, and no channels is not an error', async () => {
   // The product's whole disposition. Starting silent everywhere is the honest
@@ -54,8 +28,8 @@ test('INV-app-40 every problem is reported at once, not the first one', async ()
   // them one thing, four times, is four restarts.
   const configured = readConfig({})
   assert.ok(!configured.ok)
-  assert.equal(configured.problems.length, 4)
-  for (const name of ['SLACK_BOT_TOKEN', 'SLACK_APP_TOKEN', 'ANTHROPIC_API_KEY', 'BRISSA_READERS']) {
+  assert.equal(configured.problems.length, 3)
+  for (const name of ['SLACK_BOT_TOKEN', 'SLACK_APP_TOKEN', 'ANTHROPIC_API_KEY']) {
     assert.ok(
       configured.problems.some((p) => p.includes(name)),
       name,
@@ -188,4 +162,26 @@ test('INV-app-111 a key that is set and wrong is a problem, not a stack trace', 
   // Absent is not wrong: it means OAuth is off, which is a working state.
   assert.ok(readConfig(complete).ok)
   assert.ok(readConfig({ ...complete, BRISSA_TOKENS_KEY: randomBytes(32).toString('base64') }).ok)
+})
+
+test('INV-app-116 BRISSA_READERS is not needed to start, and is refused if it is there', async () => {
+  // It used to be required, and it used to win. Who reads what is now written
+  // by each person with `/brissa` and lives in the enrolment file — so an
+  // install with people already enrolled must start with this unset, and an
+  // install that still has it must not start quietly pretending it matters.
+  //
+  // Refused rather than ignored on purpose: a variable that is present and
+  // inert is how the next person to ask "why won't my languages stick" gets
+  // misled exactly the way this bug misled its first reader.
+  assert.ok(readConfig(complete).ok, 'no BRISSA_READERS is the normal state now')
+
+  const stillSet = readConfig({ ...complete, BRISSA_READERS: 'U-nick:es,en' })
+  assert.ok(!stillSet.ok)
+  const problem = stillSet.problems.find((p) => p.includes('BRISSA_READERS'))
+  assert.ok(problem, 'the variable has to be named, or nobody knows what to unset')
+  assert.ok(problem?.includes('/brissa'), 'and it has to say what replaced it')
+
+  // Whitespace is not a configuration. Somebody who half-deleted the line
+  // should start, not be held at the door by a space.
+  assert.ok(readConfig({ ...complete, BRISSA_READERS: '   ' }).ok)
 })

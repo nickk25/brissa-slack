@@ -74,7 +74,16 @@ if any of them is absent):
 | `ANTHROPIC_API_KEY` | api.anthropic.com, scoped to this project only |
 | `SLACK_BOT_TOKEN` | Slack app settings → OAuth & Permissions → Bot User OAuth Token |
 | `SLACK_APP_TOKEN` | Slack app settings → Basic Information → App-Level Tokens (needs `connections:write`) |
-| `BRISSA_READERS` | who Brissa translates for — `U123:es,en;U456:de` (see `.env.example`) |
+
+Who Brissa translates for is not a secret and is not set here: each person runs
+`/brissa es` in Slack and it is written to the enrolment file on the volume. If
+you are upgrading from a version that had `BRISSA_READERS`, unset it — Brissa
+refuses to start while it is there, because a variable that is present and inert
+is how somebody spends an afternoon wondering why their languages will not stick:
+
+```sh
+fly secrets unset BRISSA_READERS --app brissa
+```
 
 **Optional** (absence is a working state, not a fault — see `.env.example`
 and `src/app/config.ts` for what each does when unset):
@@ -90,7 +99,6 @@ fly secrets set \
   ANTHROPIC_API_KEY='sk-ant-...' \
   SLACK_BOT_TOKEN='xoxb-...' \
   SLACK_APP_TOKEN='xapp-...' \
-  BRISSA_READERS='U123:es,en;U456:de' \
   --app brissa
 
 # add these when you have them / when you're ready to turn a channel on —

@@ -12,6 +12,13 @@
 import type { MessageOutcome } from './handle.ts'
 
 export function describe(outcome: MessageOutcome): string {
+  // `lookup-failed` carries the only thing worth knowing about it, and printing
+  // the name alone used to throw that away. It became worth fixing the day the
+  // directory started reading a file: a corrupt or unreadable enrolment file
+  // now fails every message rather than only `/brissa`, and `lookup-failed`
+  // repeated a hundred times with no reason is a log that says something is
+  // wrong and refuses to say what.
+  if (outcome.kind === 'lookup-failed') return `lookup-failed: ${outcome.detail}`
   if (outcome.kind !== 'considered') return outcome.kind
 
   const counts = new Map<string, number>()

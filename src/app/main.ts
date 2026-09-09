@@ -21,9 +21,8 @@ import { createSlackHistory, whoOwns } from '../slack/history.ts'
 import { readShortcut } from '../slack/shortcut.ts'
 import { noticeText, renderNotice } from '../core/render.ts'
 import { createSlackApi } from '../slack/web.ts'
-import { createFileEnrolment } from '../store/enrolment.ts'
+import { createFileDirectory, createFileEnrolment } from '../store/enrolment.ts'
 import { createFileTokens, TokenStoreUnreadable } from '../store/tokens.ts'
-import { createMemoryDirectory } from '../store/memory.ts'
 import { createMemorySeen } from '../store/seen.ts'
 import { readConfig } from './config.ts'
 import { handleCommand, refuseCommand } from './command.ts'
@@ -49,8 +48,11 @@ export async function main(): Promise<void> {
 
   const work: Work = {
     ports: {
-      directory: createMemoryDirectory({
-        readers: config.readers,
+      // Who reads what comes from the file people write to with `/brissa`, and
+      // from nowhere else. It used to come from `BRISSA_READERS`, read once at
+      // boot — so enrolling wrote a record nothing consulted, and the command
+      // and the behaviour could each be right about a different fact.
+      directory: createFileDirectory(config.enrolmentPath, {
         channels: config.channels,
         // The decision `src/store` refuses to make on its own, made here: a
         // channel nobody has switched Brissa on in is a channel it stays out of.
@@ -65,7 +67,30 @@ export async function main(): Promise<void> {
   }
 
   console.log(`Brissa is listening as ${config.model}.`)
-  console.log(`  readers   ${config.readers.map((r) => `${r.userId} reads ${r.reads.join(', ')}`).join(' · ')}`)
+  // Counted from the file rather than listed from the environment. Naming
+  // people here was only possible while the list was a variable somebody typed;
+  // now it is a fact they write themselves, and a banner that printed a stale
+  // copy of it is how the old bug hid in plain sight for a day.
+  // Counted through the very directory every message will use, rather than
+  // listed from the environment. Naming people here was only possible while the
+  // list was a variable somebody typed; it is now a fact they write themselves,
+  // and a banner printing a stale copy of it is how the old bug stayed hidden.
+  //
+  // Asking the real port also means an enrolment file this cannot read is found
+  // at startup instead of by the first person who writes something.
+  try {
+    const { readers } = await work.ports.directory.lookup('startup-check')
+    const enrolled = readers.filter((r) => r.reads.length > 0).length
+    const off = readers.length - enrolled
+    console.log(
+      readers.length === 0
+        ? '  readers   nobody yet — anyone can run `/brissa es` to enrol themselves'
+        : `  readers   ${enrolled} enrolled${off > 0 ? `, ${off} switched off` : ''}`,
+    )
+  } catch (err) {
+    console.error(`  readers   UNREADABLE — ${String((err as Error)?.message ?? err)}`)
+    console.error('            every message will fail this way until the file is readable or removed')
+  }
   console.log(
     config.channels.length > 0
       ? `  channels  ${config.channels.map((c) => c.channelId).join(', ')}`
@@ -318,6 +343,14 @@ export async function main(): Promise<void> {
             // noticed rather than in a README nobody has open.
             if (outcome.kind === 'considered' && outcome.readers.every((r) => r.kind === 'skipped' && r.because === 'channel-disabled')) {
               console.log(`            add ${where} to BRISSA_CHANNELS in .env and restart to switch Brissa on here`)
+            }
+            // The other first-run state, and the one that is now reachable in a
+            // way it never used to be: the channel is on and nobody has enrolled.
+            // Before, that meant somebody had forgotten a variable; now it means
+            // nobody has run `/brissa` yet, which is the honest first state of
+            // every install and worth naming rather than leaving as silence.
+            if (outcome.kind === 'nobody-to-tell') {
+              console.log('            nobody has run `/brissa` yet — until somebody does, there is no one to translate for')
             }
           },
         },

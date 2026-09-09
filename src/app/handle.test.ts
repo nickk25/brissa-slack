@@ -14,6 +14,9 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import type { ChannelPolicy, Reader } from '../core/ports.ts'
@@ -23,7 +26,9 @@ import { createTranslator, type MessagesApi } from '../llm/decide.ts'
 import type { EphemeralRequest, SlackApi } from '../slack/send.ts'
 import { fallbackText } from '../slack/send.ts'
 import type { SlackMessageEvent } from '../slack/receive.ts'
+import { createFileDirectory, createFileEnrolment } from '../store/enrolment.ts'
 import { createMemoryDirectory } from '../store/memory.ts'
+import { handleEnrol } from './enrol.ts'
 import { handleMessage, type Ports } from './handle.ts'
 
 const nick: Reader = { userId: 'U-nick', reads: ['es', 'en'] }
@@ -517,4 +522,50 @@ test('INV-app-23 two readers are only ever grouped when they declared the very s
     { text: GERMAN, reads: ['es', 'en'] },
     { text: GERMAN, reads: ['es en'] },
   ])
+})
+
+test('INV-app-114 what `/brissa` saves is what the next message is decided against', async () => {
+  // The regression test for the bug that shipped. `/brissa` wrote to the
+  // enrolment file and `Directory` was built at boot from `BRISSA_READERS`, so
+  // enrolling saved a record nothing read. Every test above wired a directory
+  // straight from a literal, which is exactly why none of them could see it:
+  // the two halves were never asked to agree in one place.
+  //
+  // So this wires them over one real file. Nothing here is a fake except the
+  // network edges — the enrolment store and the directory are the ones that run
+  // in production, pointed at the same path.
+  const dir = await mkdtemp(join(tmpdir(), 'brissa-enrol-e2e-'))
+  const path = join(dir, 'enrolment.json')
+  const enrolment = createFileEnrolment(path)
+
+  const said: string[] = []
+  const enrolled = await handleEnrol(
+    { enrolment, send: async (_url, body) => { said.push(String(body.text)); return { ok: true } } },
+    {
+      command: '/brissa',
+      teamId: 'T1',
+      invokedBy: 'U-nick',
+      responseUrl: 'https://hooks.slack.test/x',
+      argument: { kind: 'set', reads: ['es'] },
+    },
+  )
+  assert.deepEqual(enrolled, { kind: 'saved', reads: ['es'] })
+  assert.ok(said[0]?.includes('Spanish'), said[0] ?? 'nothing was said back')
+
+  // Now a German message arrives, and the only question that matters is which
+  // languages the translator is asked about. Under the bug it was whatever the
+  // environment said; it must now be what the person just said.
+  const t = fakeTranslator(() => translated(SPANISH))
+  const s = fakeSlack()
+  const outcome = await handleMessage(
+    { directory: createFileDirectory(path, { channels: [on] }), translator: t.translator, slack: s.api },
+    event(),
+  )
+
+  assert.deepEqual(t.calls, [{ text: GERMAN, reads: ['es'] }], 'the languages `/brissa` saved, not any other list')
+  assert.equal(outcome.kind, 'considered')
+  assert.equal(s.posts.length, 1)
+  assert.equal(s.posts[0]?.user, 'U-nick')
+
+  await rm(dir, { recursive: true, force: true })
 })

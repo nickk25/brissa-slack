@@ -17,7 +17,9 @@
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import type { ChannelView, Directory } from '../core/directory.ts'
 import type { Enrolment, EnrolmentRecord } from '../core/enrolment.ts'
+import type { ChannelPolicy, Reader } from '../core/ports.ts'
 
 /** One row per `(teamId, userId)`, the same key `EnrolmentRecord` is declared by. */
 type OnDisk = Record<string, EnrolmentRecord>
@@ -110,6 +112,67 @@ export function createFileEnrolment(path: string): Enrolment {
       })
       writes = queued.catch(() => {})
       return queued
+    },
+  }
+}
+
+
+export interface FileDirectoryContents {
+  /** The channels somebody has switched Brissa on in. */
+  readonly channels?: readonly ChannelPolicy[]
+  /** What to say about a channel nobody has ruled on. Defaults to disabled. */
+  readonly unknownChannels?: 'enabled' | 'disabled'
+}
+
+/**
+ * The same question `memory.ts` answers, asked of the file people write to.
+ *
+ * This exists because the two halves used to be strangers. `/brissa` wrote a
+ * record here and `Directory` was built once at boot from `BRISSA_READERS`, an
+ * environment variable — so enrolling saved something nothing read. Worse than
+ * silent: a bare `/brissa` reads this file and reported languages that were not
+ * the ones deciding anything, so the command and the behaviour could each be
+ * right about a different fact. Somebody was told "Saved" and served as though
+ * they had said something else, and there was no way to see it from inside
+ * Slack. `src/store/CLAUDE.md` said this file was where that change would land.
+ *
+ * Read per lookup rather than cached, for the reason stated above `createFileEnrolment`
+ * and restated here because this is the hot path and a cache is the tempting
+ * thing to add: the same question asked twice must get the same answer, and
+ * somebody who has just run `/brissa` must be served on the very next message,
+ * not on the next restart. The file is one small JSON object; `writeAll` renames
+ * atomically, so a reader sees the file before or the file after, never a torn
+ * one.
+ *
+ * The team is deliberately ignored. Records are keyed `(teamId, userId)`, but
+ * `Directory.lookup` is given a channel and nothing else, and one bot token
+ * serves one workspace — so every record in the file belongs to the installation
+ * asking. That holds until Brissa is installed twice, and `INV-store-43` is what
+ * fails on the day it stops holding, rather than a person in one workspace being
+ * served for a channel in another.
+ *
+ * Readers are not filtered by channel here either — the limitation `memory.ts`
+ * states, for the same reason and with the same remedy.
+ */
+export function createFileDirectory(path: string, contents: FileDirectoryContents = {}): Directory {
+  const fallback = contents.unknownChannels === 'enabled'
+  const policies = new Map((contents.channels ?? []).map((p) => [p.channelId, p]))
+
+  return {
+    async lookup(channelId: string): Promise<ChannelView> {
+      const policy = policies.get(channelId) ?? { channelId, enabled: fallback }
+
+      // Somebody who ran `/brissa off` is on file with an empty `reads`, and
+      // comes back as a reader who reads nothing rather than as nobody. That is
+      // what keeps `shouldAsk`'s `reader-reads-nothing` distinct from never
+      // having met them — dropping them here would erase the difference the
+      // record was written to hold.
+      const rows = Object.values(await readAll(path))
+      const readers: Reader[] = [
+        ...new Map(rows.map((r): [string, Reader] => [r.userId, { userId: r.userId, reads: r.reads }])).values(),
+      ]
+
+      return { policy, readers }
     },
   }
 }

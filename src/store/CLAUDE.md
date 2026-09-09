@@ -156,6 +156,46 @@ yet" rather than thrown.
   would need a lock, and that is the line to change when there are two.
   `test: INV-store-19`
 
+## The directory over that same file
+
+For most of this module's life `Directory` had one implementation, `memory.ts`,
+built at boot from a list somebody typed into `BRISSA_READERS`. Enrolment wrote
+to a file beside it and the two were strangers: `/brissa` saved a record that
+nothing consulted, and because a bare `/brissa` read that file back, the command
+and the behaviour could each be right about a different fact. Somebody was told
+"Saved. You read: Spanish", went on being served as though they read Spanish and
+English, and there was no way to see the difference from inside Slack.
+
+`createFileDirectory` closes that: the fact people write is the fact every
+message is decided against. Above, this file said that when memory stopped being
+enough the port would not change and the change would land here. It did.
+
+- Somebody who enrols is a reader on the very next lookup, with no restart.
+  `test: INV-store-38`
+- Somebody who turned translation off comes back as a reader who reads nothing,
+  never as an absent one — that is what keeps `reader-reads-nothing` distinct
+  from never having met them. `test: INV-store-39`
+- A missing file is a directory that knows nobody, not a broken one: the state
+  of every installation before the first `/brissa`. `test: INV-store-40`
+- A file that cannot be read is a broken directory, never an empty workspace.
+  Reading it as "nobody enrolled" would make a corrupt volume look exactly like
+  a workspace where nobody has signed up — silent everywhere, with every log
+  line claiming it worked. `test: INV-store-41`
+- Two lookups with no write between them agree, and a lookup after a write sees
+  it. There is no cache, and this is where one would be tempting: a cached
+  directory serves somebody their old languages until the next restart, which is
+  the bug this whole section exists to remove, rebuilt in memory.
+  `test: INV-store-42`
+- Readers come back whatever team they are filed under, and one person is one
+  reader. Records are keyed `(teamId, userId)`; `Directory.lookup` is handed a
+  channel and nothing else. Ignoring the team is correct while one bot token
+  serves one workspace, and INV-store-43 is what fails on the day that stops
+  being true, rather than somebody in one workspace being served for a channel
+  in another. `test: INV-store-43`
+
+Readers are still not filtered by channel — the limitation `memory.ts` states,
+for the same reason and with the same remedy.
+
 ## Tokens: the one write that is not safe to log
 
 `tokens.ts` answers a port shaped like `Enrolment`'s — read one person, write

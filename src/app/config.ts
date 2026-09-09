@@ -11,7 +11,7 @@
  * the first time.
  */
 
-import type { ChannelPolicy, Reader } from '../core/ports.ts'
+import type { ChannelPolicy } from '../core/ports.ts'
 import { tokensKeyProblem } from '../store/tokens.ts'
 
 export interface Config {
@@ -70,36 +70,10 @@ export interface Config {
     | { readonly clientId: string; readonly clientSecret: string; readonly publicUrl: string }
     | undefined
   readonly model: string
-  readonly readers: readonly Reader[]
   readonly channels: readonly ChannelPolicy[]
 }
 
 export type Configured = { readonly ok: true; readonly config: Config } | { readonly ok: false; readonly problems: readonly string[] }
-
-/** `U123:es,en;U456:de` — one person per entry, languages in the order they prefer. */
-export function readReaders(raw: string): { readers: Reader[]; problems: string[] } {
-  const readers: Reader[] = []
-  const problems: string[] = []
-
-  for (const entry of raw.split(';').map((e) => e.trim()).filter(Boolean)) {
-    const [userId, languages] = entry.split(':')
-    if (!userId || !languages) {
-      problems.push(`BRISSA_READERS: "${entry}" is not "U123:es,en"`)
-      continue
-    }
-    const reads = languages.split(',').map((l) => l.trim().toLowerCase()).filter(Boolean)
-    if (reads.length === 0) {
-      // The one case that must not become a reader: `shouldAsk` treats an empty
-      // list as "has not finished setting up" and stays silent, which would look
-      // exactly like Brissa being broken.
-      problems.push(`BRISSA_READERS: "${userId}" lists no languages`)
-      continue
-    }
-    readers.push({ userId: userId.trim(), reads })
-  }
-
-  return { readers, problems }
-}
 
 /** `C123,C456` — the channels somebody has switched Brissa on in. */
 export function readChannels(raw: string): ChannelPolicy[] {
@@ -157,10 +131,18 @@ export function readConfig(env: Record<string, string | undefined>): Configured 
   if (!appToken) problems.push('SLACK_APP_TOKEN is empty (app settings → Basic Information → App-Level Tokens)')
   if (!env.ANTHROPIC_API_KEY?.trim()) problems.push('ANTHROPIC_API_KEY is empty')
 
-  const { readers, problems: readerProblems } = readReaders(env.BRISSA_READERS ?? '')
-  problems.push(...readerProblems)
-  if (readers.length === 0) {
-    problems.push('BRISSA_READERS is empty — nobody to translate for, so Brissa would run and never speak')
+  // Refused rather than ignored, and refused rather than required. Who reads
+  // what is written by each person with `/brissa` and lives in the enrolment
+  // file; this variable used to be read once at boot and beat whatever they
+  // said, so a person could be told "Saved" and served as though they had said
+  // something else. Leaving it merely unused would let an operator go on
+  // believing it still did something — and the next person to wonder why
+  // somebody's languages "will not stick" would find it in the environment and
+  // be misled exactly as before.
+  if (env.BRISSA_READERS?.trim()) {
+    problems.push(
+      'BRISSA_READERS is set, and Brissa no longer reads it — each person says what they read by running `/brissa es` in Slack, which is kept in BRISSA_ENROLMENT_PATH. Unset it (`fly secrets unset BRISSA_READERS`) and have anybody it named run `/brissa` once.',
+    )
   }
 
   // No channels is not a problem. They are off until somebody switches one on,
@@ -204,7 +186,6 @@ export function readConfig(env: Record<string, string | undefined>): Configured 
       port: Number(env.PORT?.trim()) || 8080,
       oauth: oauthFrom(env),
       model: env.BRISSA_MODEL?.trim() || 'claude-sonnet-5',
-      readers,
       channels,
     },
   }
