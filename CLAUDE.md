@@ -62,6 +62,7 @@ Two decisions everything else follows from:
 | `manifest.json` | The Slack app: its scopes, its events, its name. |
 | `coupling.yaml` | This repository's rules. Also the schema reference. |
 | `tools/agentic/` | The gate, contracts, invariants and state machinery. Protected. |
+| `docs/DEPLOY.md` | How and where Brissa runs in production — Dockerfile, fly.toml, secrets, cost, rollback. |
 
 ## 4. I want to change X, so I read Y
 
