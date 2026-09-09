@@ -232,3 +232,57 @@ test('INV-app-104 a request target Node accepts and URL refuses does not take th
   assert.match(await ask('GET /healthz HTTP/1.1'), /^HTTP\/1\.1 200 /)
   await running.close()
 })
+
+test('INV-app-105 a route that throws is answered, not left to take the process with it', async () => {
+  // The guard added after a malformed request target killed the process, and
+  // then left untested — which mutation testing found, not review. `respond` is
+  // started and not awaited, so a rejection anywhere inside it has nowhere to
+  // go but the process, and this process holds Brissa's websocket.
+  const running = await startServer(
+    {
+      start: () => {
+        throw new Error('something in the wiring is wrong')
+      },
+      callback: async () => ({ status: 200, body: 'ok' }),
+    },
+    0,
+  )
+
+  const answer = await fetch(`http://127.0.0.1:${running.port}/oauth/start`)
+  assert.equal(answer.status, 500)
+  // Nothing of the fault reaches the browser: the message is somebody's stack,
+  // and the person reading it is whoever happened to open the page.
+  assert.ok(!(await answer.text()).includes('wiring'))
+
+  // Still serving, which is the assertion that matters.
+  assert.equal((await fetch(`http://127.0.0.1:${running.port}/healthz`)).status, 200)
+  await running.close()
+})
+
+test('INV-app-106 a request Node cannot even parse is refused at the socket', async () => {
+  // Before `respond` is ever reached. Left to Node's default this is a silently
+  // destroyed socket, which is survivable — but the default is not ours to
+  // rely on, so it is stated and held here.
+  const running = await startServer(
+    { start: () => ({ location: 'https://slack.com' }), callback: async () => ({ status: 200, body: 'ok' }) },
+    0,
+  )
+
+  const seen = await new Promise<string>((resolve) => {
+    const socket = connect(running.port, '127.0.0.1', () => socket.write('GET /healthz HTTP/9.9\r\n\r\n'))
+    let out = ''
+    socket.on('data', (d) => {
+      out += String(d)
+    })
+    socket.on('close', () => resolve(out))
+    socket.on('error', () => resolve('socket error'))
+    setTimeout(() => {
+      socket.destroy()
+      resolve(out || 'no answer')
+    }, 500).unref()
+  })
+
+  assert.ok(seen.startsWith('HTTP/1.1 400') || seen === 'socket error', `got: ${JSON.stringify(seen.slice(0, 40))}`)
+  assert.equal((await fetch(`http://127.0.0.1:${running.port}/healthz`)).status, 200)
+  await running.close()
+})

@@ -604,4 +604,11 @@ revoking it failed* is the worst of the three outcomes.
   public; `GET http://[::1 HTTP/1.1` threw where nothing awaited it, and the
   process that holds Brissa's websocket exited. `restart = always` then made a
   script of it. `test: INV-app-104`
+- A route that throws is answered, not left to take the process with it — and
+  nothing of the fault reaches the browser. The guard was added after a
+  malformed request target killed the process and then left untested, which
+  mutation testing found rather than review. `test: INV-app-105`
+- A request Node cannot even parse is refused at the socket, before `respond` is
+  reached. Node's default is survivable but is not ours to rely on.
+  `test: INV-app-106`
 
