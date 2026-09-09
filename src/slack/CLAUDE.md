@@ -378,3 +378,48 @@ to the constant in `command.ts` itself.
   `limit` counts raw entries and joins and topic changes are filtered out after,
   so asking for exactly five would quietly translate two. `test: INV-slack-69`
 
+## `/brissa`, the door that used to be a laptop
+
+Every reader used to be a line in `BRISSA_READERS` — an environment variable on
+somebody's machine. Enrolling a new person meant editing that file and
+restarting the process, which does not scale past one, and was the whole reason
+nobody else on the team could use Brissa. `enrol.ts` is `command.ts` again, same
+shape, same discipline: Slack hands this a flat, form-encoded payload and this
+file's only job is turning it into `EnrolCommand`, never deciding what to do
+with one.
+
+`text` stands for the same three-way split `/translate`'s argument does, one
+size smaller: nothing (query), the word `off`, or one or more language codes. A
+code's region is folded away — `es-ES` becomes `es` — because `render.ts` names
+a language from a bare two-letter code and nothing else; keeping the region
+would silently turn a language Brissa already knows how to name into one it
+does not. What is checked is the *shape* every ISO 639-1 code has, two letters,
+never a fixed list of the languages Brissa happens to name today — a code this
+file has never heard of is still a real language, and refusing it here would
+refuse translations that would otherwise work fine.
+
+A single bad token refuses the whole line, not just itself. `/brissa es xx fr`
+partially applied would leave the caller unsure which of the three actually
+took, and `off` typed alongside real language codes is refused the same way,
+by the same check — it is not a two-letter code either, so it is not one of two
+special forms silently guessed at.
+
+- No argument, empty or blank, reads as a request to see what Brissa currently
+  thinks — the query form, not a refusal. `test: INV-slack-71`
+- Language codes are read in the order given — the first is the one a
+  translation would be made into. `test: INV-slack-72`
+- Case and region are folded sensibly: `ES`, `es-ES` and `es` all mean the same
+  language. `test: INV-slack-73`
+- A token that is not a real language code is refused, whether it stands alone
+  or sits beside real ones — including `off` used as if it were one.
+  `test: INV-slack-74`
+- `off`, in any case, alone, reads as a request to stop. `test: INV-slack-75`
+- A payload with nowhere to answer is refused before anything else is read.
+  `test: INV-slack-76`
+- A payload with no team is refused, carrying the response_url the payload
+  gave. `test: INV-slack-77`
+- A payload with no user is refused, carrying the response_url the payload
+  gave. `test: INV-slack-78`
+- Something not shaped like a command payload at all — `null`, an array, a
+  scalar — is refused by name. `test: INV-slack-79`
+

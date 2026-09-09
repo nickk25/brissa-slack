@@ -210,15 +210,26 @@ The port lives here rather than in `src/llm` so the core owns the shape of the
 question. An interface declared in the adapter would let the SDK's vocabulary
 cross back one field at a time.
 
-## Four ports, and why all of them are declared here
+## Five ports, and why all of them are declared here
 
 `translator.ts` asks for a translation. `directory.ts` asks who reads what in a
 channel. `seen.ts` asks whether a delivery has already been handled. `history.ts`
-asks what was recently said in a channel. None of them is called by anything in
+asks what was recently said in a channel. `enrolment.ts` reads, and writes, one
+person's own account of what they read. None of them is called by anything in
 this module, and all of them belong here anyway: the core owns the shape of the
 question, and an interface declared in the module that answers it would let that
 module's vocabulary — a table name, a row, an SDK type — cross back one field at
 a time.
+
+`enrolment.ts` is the one port here that writes, and it earns that only because
+of what it is: a person's own declaration of a fact about themselves, made
+through `/brissa` and nothing else. `directory.ts`'s own doc comment states the
+risk a write method invites — a business rule in `src/core` deciding, on its
+own, to mutate state nobody asked it to touch — and that risk has no purchase
+here, because no function in this module calls `write`. Every record is keyed
+by `(teamId, userId)` from the start, a pair Slack already signs onto every
+command and interaction, so the day a second workspace exists it costs a column
+nobody has to invent retroactively.
 
 `history.ts` exists for `/translate`, which has to decide which of several
 recent messages to act on — skip the caller's own, take the last N — before it

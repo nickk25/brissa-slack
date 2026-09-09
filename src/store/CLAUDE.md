@@ -99,9 +99,51 @@ traffic for any workspace this will see before there is a shared store.
   overflow would otherwise be indistinguishable. `test: INV-store-11`
 - Asking again does not keep an id alive longer. `test: INV-store-12`
 
-## Still missing
+## Enrolment: the one write this module does
 
-Enrolment. Nothing writes to this module — the port is read-only on purpose, and
-the contents arrive as a literal at startup. The command a person uses to say
-which languages they read does not exist yet, and when it does it is this
-module's own API rather than a method on the port.
+`enrolment.ts` answers `src/core/enrolment.ts`, and it is a different shape from
+everything above it in this file for a reason worth stating plainly: `Directory`
+is read-only, served from a literal handed in at startup, and this port writes,
+served from a JSON file that changes every time somebody runs `/brissa`. The
+justification for the write lives on the port itself, not here — this file only
+has to keep the two promises the port makes: the difference between "never
+enrolled" and "off" survives a round trip, and a crash cannot lose everybody
+else's record to fix one person's.
+
+The path is a constructor parameter, never `process.env` read from inside this
+module — the same rule `memory.ts` states by never importing anything that
+would let it. Only `src/app/main.ts` reads the environment.
+
+**Atomic, the same way `seen.ts` is bounded: because the alternative is a
+correctness bug nobody notices until it happens.** Every write goes to a
+temporary path first and is renamed onto the real one — a rename Node's
+filesystems perform as a single step, so a crash mid-write leaves the file
+exactly as it was before, never half of the old contents and half of the new.
+Writing the real path directly would let a process that dies between the first
+byte and the last leave a truncated file behind, and a truncated JSON file does
+not fail loudly for the person who was mid-write — it fails the next read, for
+everybody who was ever enrolled.
+
+**Read-modify-write, not overwrite-with-one-row.** Every write reads the whole
+file, updates one entry keyed by `(teamId, userId)`, and writes the whole file
+back — because the file holds everybody, and a write about one person must not
+be the reason another person's record vanishes.
+
+**A missing file is not an error.** It is the state of every installation that
+has never had anybody run `/brissa`, the same way an empty `BRISSA_READERS` is
+the honest first state for `src/app/config.ts` — reported as "nobody enrolled
+yet" rather than thrown.
+
+- A person who has never enrolled reads back as `undefined`, not an error and
+  not an empty record. `test: INV-store-13`
+- What was written is what comes back, keyed by team and user together — the
+  same user in two different teams is two different records. `test: INV-store-14`
+- `off` — a written record whose `reads` is empty — round-trips as a real
+  record, distinguishable from never having enrolled at all. `test: INV-store-15`
+- A store nobody has ever written to answers "nobody enrolled yet", not an
+  error. `test: INV-store-16`
+- Writing one person leaves another person, already on file, untouched.
+  `test: INV-store-17`
+- A write that fails before it renames leaves the previous file exactly as it
+  was — the whole reason the write goes to a temporary path first.
+  `test: INV-store-18`

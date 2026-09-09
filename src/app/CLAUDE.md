@@ -372,9 +372,15 @@ once per failed message.
 
 ## Still missing
 
-A way to say "translate for me" from inside Slack. Readers and channels are
-environment variables, which means every change is an edit and a restart, by
-whoever has the machine.
+A way to say "translate for me" from inside Slack existed only as `BRISSA_READERS`,
+an environment variable on somebody's machine — every new person meant editing
+that file and restarting the process, which does not scale past one and was the
+whole reason nobody else on the team could use Brissa. `enrol.ts` is that door:
+`/brissa es en` to say what you read, `/brissa` to see what Brissa currently
+thinks, `/brissa off` to stop. What is still missing is the wiring — nothing in
+`main.ts` points a real `Enrolment` at `handleEnrol` yet, so this is a finished
+flow with nobody calling it, the same state the HTTP path below was in before
+anybody deployed it.
 
 `handleRequest` still has nothing pointed at it: `manifest.json` enables Socket
 Mode and declares no request URL, so Slack never POSTs. That is the right default
@@ -423,4 +429,53 @@ those fired together is a self-inflicted rate limit.
 - A later message never overtakes an earlier one. `test: INV-app-71`
 - What is ready goes out without waiting for what is not. `test: INV-app-72`
 - The last answer is reserved, so a tail can never be dropped. `test: INV-app-73`
+
+## `/brissa`: the flow that writes, and the one that always answers anyway
+
+`enrol.ts` is `command.ts`'s shape again — the same "it always answers" rule, the
+same ports-in, `response_url`-out — with one structural difference: it asks
+`Enrolment`, never `Directory` or `Translator`, and `Enrolment` is the one port
+in this whole system this module is allowed to call `write` on. There is no
+`shouldAsk` here to skip, because there is no message and no channel; the only
+judgement is what a person's own three words — a language list, blank, or
+`off` — should turn into on disk and in a reply.
+
+**The reply always says which of three states the caller is in**, because the
+three read differently and collapsing any two would misinform somebody: a
+person Brissa has never met is told to enrol; a person who ran `/brissa off` is
+told they are off; a person with languages on file is told what they are. Only
+the store can tell these apart — `undefined` from `never-enrolled`, an empty
+`reads` from `off` — and this module's whole job on the query path is asking
+once and repeating the answer honestly.
+
+**Off is not a second mechanism.** Writing an empty `reads` list is the entire
+implementation, because `shouldAsk` in `src/core/ask.ts` already treats an
+empty list as "stay silent for this reader" — the exact behaviour "stop
+translating for me" needs, with no new skip reason and no flag to keep in sync
+with it.
+
+**A store failure is reported, never mistaken for an empty answer.** A `read`
+that throws is not the same as a `read` that found nobody — one is
+"never enrolled", an honest answer; the other is somebody's job to fix, the
+same distinction `command.ts` draws between an empty directory and a broken
+one.
+
+- A bare `/brissa` reports what Brissa currently thinks the caller reads, in
+  the order they gave it. `test: INV-app-74`
+- A bare `/brissa` for somebody never enrolled says so — distinct from having
+  turned translation off. `test: INV-app-75`
+- A bare `/brissa` for somebody who turned translation off says so — distinct
+  from never having enrolled. `test: INV-app-76`
+- `/brissa es en` saves the languages, in order, and confirms them in words.
+  `test: INV-app-77`
+- `/brissa off` writes an empty enrolment and confirms translation has
+  stopped. `test: INV-app-78`
+- A command this app does not own is left alone. `test: INV-app-79`
+- A store failure is reported as its own outcome, never answered as if nothing
+  were on file. `test: INV-app-80`
+- An answer that could not be sent is its own outcome, distinct from having
+  nothing to say. `test: INV-app-81`
+- Nothing here writes to a log, a file, or any store outside `Enrolment` — a
+  full run, query, set and off alike, makes no call to any logging surface.
+  `test: INV-app-82`
 
