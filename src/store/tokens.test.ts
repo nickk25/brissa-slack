@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
-import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { createFileTokens, type UserTokenRecord } from './tokens.ts'
+import { createFileTokens, TokenStoreUnreadable } from './tokens.ts'
+import type { UserTokenRecord } from '../core/tokens.ts'
 
 /** A fresh directory per test, so no test can see another's file. */
 async function tmpDir(): Promise<string> {
@@ -240,7 +241,7 @@ test('INV-store-34 a file edited by hand fails to open rather than opening wrong
   flipped[0] = (flipped[0] ?? 0) ^ 0xff
   await writeFile(path, JSON.stringify({ ...sealed, body: flipped.toString('base64') }))
 
-  await assert.rejects(() => createFileTokens(path, KEY).read('T1', 'U-nick'), /could not be decrypted/)
+  await assert.rejects(() => createFileTokens(path, KEY).read('T1', 'U-nick'), /could not be read/)
 
   // And the wrong key is refused the same way, because from here the two are
   // indistinguishable — which is the point. A fresh file, because writing to
@@ -248,7 +249,7 @@ test('INV-store-34 a file edited by hand fails to open rather than opening wrong
   const second = join(dir, 'other.json')
   await createFileTokens(second, KEY).write({ teamId: 'T1', userId: 'U-nick', token: 'xoxp-x' })
   const other = randomBytes(32).toString('base64')
-  await assert.rejects(() => createFileTokens(second, other).read('T1', 'U-nick'), /could not be decrypted/)
+  await assert.rejects(() => createFileTokens(second, other).read('T1', 'U-nick'), /could not be read/)
 
   await rm(dir, { recursive: true, force: true })
 })
@@ -258,5 +259,48 @@ test('INV-store-35 a key that is not a key is refused rather than stretched', as
   // and nothing afterwards would ever say so.
   for (const bad of ['', 'short', Buffer.alloc(16).toString('base64')]) {
     assert.throws(() => createFileTokens('/tmp/never-written.json', bad), /32 bytes/)
+  }
+})
+
+test('INV-store-36 every file that exists and cannot be used is the same kind of problem', async () => {
+  // The startup check refuses to run on `TokenStoreUnreadable` and rethrows
+  // anything else. It caught a wrong key and a plaintext file, and let a
+  // truncated one, an empty one and a directory through to a stack trace —
+  // which is exactly the ugly, unactionable failure it was added to prevent.
+  // One type, because operationally there is one situation: the file is there
+  // and it cannot be opened.
+  const dir = await tmpDir()
+  try {
+    const shapes: Record<string, string> = {
+      'truncated.json': '{"v":1,"iv":"AA',
+      'empty.json': '',
+      'valid-json-not-ours.json': '{"a":1}',
+      // What the file looked like before it was ever encrypted.
+      'plaintext.json': '{"T1:U1":{"teamId":"T1","userId":"U1","token":"xoxp-x"}}',
+    }
+    for (const [name, body] of Object.entries(shapes)) {
+      const path = join(dir, name)
+      await writeFile(path, body)
+      await assert.rejects(
+        () => createFileTokens(path, KEY).read('T1', 'U1'),
+        (err: unknown) => err instanceof TokenStoreUnreadable,
+        name,
+      )
+    }
+
+    // A directory where the file should be: a different mistake, the same need
+    // to be told which path.
+    const asDir = join(dir, 'adir.json')
+    await mkdir(asDir)
+    await assert.rejects(
+      () => createFileTokens(asDir, KEY).read('T1', 'U1'),
+      (err: unknown) => err instanceof TokenStoreUnreadable && err.message.includes('EISDIR'),
+    )
+
+    // And a file that simply is not there is still nobody, not a fault — the
+    // state of every installation on its first day.
+    assert.equal(await createFileTokens(join(dir, 'none.json'), KEY).read('T1', 'U1'), undefined)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
   }
 })

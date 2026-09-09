@@ -116,14 +116,22 @@ async function readAll(path: string, key: Buffer): Promise<OnDisk> {
     raw = await readFile(path, 'utf8')
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {}
-    throw err
+    // A directory where the file should be, a permission that does not allow
+    // reading it. Not "corrupt", but the same thing operationally: this store
+    // cannot be opened, and whoever deployed it needs to hear which path.
+    throw new TokenStoreUnreadable(path, (err as NodeJS.ErrnoException).code)
   }
 
   let sealed: Sealed
   try {
     sealed = JSON.parse(raw) as Sealed
   } catch {
-    throw new Error(`Corrupt token store at ${path}`)
+    // The same situation as a key that does not match, and the same type: the
+    // file is there and cannot be used. Two types would have meant two branches
+    // wherever this is caught, and the second one was the branch that fell
+    // through to a stack trace — a truncated file, an empty file, a file left
+    // over from before this was encrypted.
+    throw new TokenStoreUnreadable(path)
   }
 
   try {
@@ -183,8 +191,12 @@ export class TokenStoreUnreadable extends Error {
   // compiled, and strip-only mode has no way to emit the assignment.
   readonly path: string
 
-  constructor(path: string) {
-    super(`Token store at ${path} could not be decrypted — the key does not match the file`)
+  constructor(path: string, code?: string) {
+    super(
+      code === undefined
+        ? `Token store at ${path} could not be read — the key does not match the file, or the file is not one this wrote`
+        : `Token store at ${path} could not be opened (${code})`,
+    )
     this.path = path
     this.name = 'TokenStoreUnreadable'
   }

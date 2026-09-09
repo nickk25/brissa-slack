@@ -235,4 +235,10 @@ a credential leaks into a log nobody meant to write one to.
   `test: INV-store-34`
 - A key that is not a key is refused rather than stretched: a short key quietly
   padded produces a file that looks encrypted and is not. `test: INV-store-35`
+- Every file that exists and cannot be used is the same kind of problem, and
+  says which path. The startup check refuses to run on that type and rethrows
+  anything else — it caught a wrong key and a plaintext file while letting a
+  truncated one, an empty one and a directory through to a stack trace, which is
+  the unactionable failure it existed to prevent. A file that is simply absent
+  is still nobody, not a fault. `test: INV-store-36`
 
