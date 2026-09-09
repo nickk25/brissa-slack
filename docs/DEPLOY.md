@@ -5,20 +5,39 @@ app before, skip to §1.
 
 ## 0. What you are actually deploying
 
-Brissa is not a web server. `npm start` runs
+Brissa's core is still not a web server in the way most Fly apps are. `npm
+start` runs
 `node --experimental-strip-types --env-file-if-exists=.env src/app/main.ts`,
 which opens a websocket **outward** to Slack (Socket Mode — see
-`src/slack/socket.ts`) and keeps it open. It listens on no port and receives
-no inbound HTTP. That one fact shapes everything below:
+`src/slack/socket.ts`) for every message it translates automatically, and
+keeps that connection open for as long as the process runs.
 
-- There is nothing for Fly's health checks or load balancer to point at, so
-  `fly.toml` has no `[[services]]` block and no port. Don't add one — it
-  would be inventing a listener that doesn't exist.
-- It must run continuously. A stopped machine is a Brissa that has silently
-  gone offline, and — per `src/slack/socket.ts`'s own comments — a process
-  that exits looks exactly like a clean shutdown, with nothing that says so.
-  `fly.toml` has no `auto_stop_machines`/scale-to-zero behaviour and sets
-  `[[restart]] policy = "always"` instead: one machine, always on.
+What changed is per-user OAuth: Slack has to redirect a person's browser back
+to a URL Brissa owns to finish connecting their account, and a redirect only
+works if something answers it. `src/app/server.ts` is that something — a
+small `node:http` server with exactly three routes
+(`/oauth/start`, `/oauth/callback`, `/healthz`), documented in
+`src/app/CLAUDE.md` ("Listening: `server.ts`"). That reshapes what used to be
+true here:
+
+- `fly.toml` now has an `[[services]]` block, forwarding `443`/`80` to
+  `internal_port = 8080` — the port `src/app/server.ts` is expected to
+  listen on. This is **not** inventing a listener that doesn't exist any
+  more; it is naming one that genuinely does.
+- It must still run continuously, and for a reason that has nothing to do
+  with the new port: the always-open Socket Mode websocket. A stopped
+  machine is a Brissa that has silently gone offline, and — per
+  `src/slack/socket.ts`'s own comments — a process that exits looks exactly
+  like a clean shutdown, with nothing that says so. Adding a `[[services]]`
+  block would normally hand Fly's proxy the traffic-based signal it uses to
+  scale a machine to zero, which is exactly the outcome that must not
+  happen here — a browser hitting `/oauth/start` once during an install
+  looks, to that proxy, like the idle traffic pattern `auto_stop_machines`
+  exists to notice. So `fly.toml` sets `auto_stop_machines = false` and
+  `min_machines_running = 1` **explicitly**, on the service, rather than
+  relying on there being no service to trigger it. `[[restart]]
+  policy = "always"` is unchanged and covers the other half: the process
+  itself exiting.
 - The region is `fra` (Frankfurt): EU data residency for German-speaking
   clients. Brissa exists to translate for people whose Slack channels contain
   German (see `docs/DECISIONS.md`); their message content should not leave
@@ -83,6 +102,41 @@ fly secrets set \
   --app brissa
 ```
 
+### Per-user OAuth: two more secrets, and a URL to register with Slack
+
+Not in either table above, because they are not (yet) read by
+`src/app/config.ts` — the module that owns "required" here — and are not
+enforced by anything running today. They exist for the OAuth exchange
+`src/slack/oauth.ts` performs and `src/app/server.ts`'s `/oauth/callback`
+carries to it; wiring that into `main.ts` and `config.ts` is separate work
+this document does not claim has landed.
+
+| Secret | Where it comes from |
+| --- | --- |
+| `SLACK_CLIENT_ID` | Slack app settings → Basic Information → App Credentials |
+| `SLACK_CLIENT_SECRET` | Slack app settings → Basic Information → App Credentials — treat it exactly like the other secrets on this page: `fly secrets set`, never committed, never logged |
+
+```sh
+fly secrets set \
+  SLACK_CLIENT_ID='...' \
+  SLACK_CLIENT_SECRET='...' \
+  --app brissa
+```
+
+Slack also needs to know where to send a browser back once someone approves
+the connection. In the app's settings, under **OAuth & Permissions → Redirect
+URLs**, add:
+
+```
+https://brissa.fly.dev/oauth/callback
+```
+
+(`brissa.fly.dev` because that is this app's name and Fly's default domain —
+see `fly.toml`'s `app = "brissa"`. If the app was ever created under a
+different name, use that name's `.fly.dev` host instead.) This is the one
+piece of Slack-side configuration that lives outside `fly secrets set`
+entirely — it is set in Slack's own UI, not on this machine.
+
 A `fly secrets set` triggers a new deploy on its own (the machine restarts
 with the new values). You do not need to `fly deploy` again just because a
 secret changed.
@@ -126,8 +180,18 @@ while, rather than guessing up front.
 
 ## 5. How to tell it is running
 
-There is no health-check endpoint — see §7. What you have instead is what
-the process prints on startup and on every message it handles:
+Once `main.ts` actually starts `src/app/server.ts` (see §7 — as of this
+writing it does not yet), the health check `fly.toml` now points at
+`/healthz` is the fast signal:
+
+```sh
+fly checks list --app brissa
+curl -i https://brissa.fly.dev/healthz     # 200, body "ok"
+```
+
+Until then, and always for the Socket Mode side that `/healthz` does not and
+cannot speak for, what you have is what the process prints on startup and on
+every message it handles:
 
 ```sh
 fly logs --app brissa
@@ -167,10 +231,16 @@ again — there is no data migration to reverse.
 
 Said plainly, not buried:
 
-- **No health check.** There is no HTTP surface to check. The honest signal
-  that Brissa is alive is its own log lines (§5) and `fly status`. If Fly
-  ever reports the machine as up but the websocket has silently wedged
-  without hitting `reconnect`, nothing here would notice.
+- **The health check `fly.toml` points at is not live yet.** `src/app/server.ts`
+  exists and is tested (`src/app/server.test.ts`), and `fly.toml` now declares
+  a `[[services]]` block with an `http_checks` entry against `/healthz` — but
+  nothing in `main.ts` calls `startServer` yet (see `src/app/CLAUDE.md`,
+  "Listening: `server.ts`"). **Do not `fly deploy` this `fly.toml` before that
+  wiring lands.** Deployed as-is, the health check would poll a port nothing
+  listens on and the machine would never report healthy. Once `main.ts` is
+  wired, the check tells you what §5 says; until then, the log lines are still
+  the only honest signal, and `/healthz` answering nothing is a config problem
+  to fix in code, not a real outage to page anyone about.
 - **No metrics.** Counts of messages seen, translated, or skipped exist only
   as log lines, not as anything queryable.
 - **No persistence across restarts.** `src/store/memory.ts` and
