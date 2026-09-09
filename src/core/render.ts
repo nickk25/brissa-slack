@@ -38,7 +38,20 @@ export type Block =
 
 const LANGUAGE_NAMES: Record<string, string> = { de: 'German', es: 'Spanish', en: 'English', fr: 'French', it: 'Italian', nl: 'Dutch', pt: 'Portuguese' }
 
-const name = (code: string) => LANGUAGE_NAMES[code] ?? code
+/**
+ * A language code as a person would say it, or the code itself.
+ *
+ * Exported because more than one place has to say a language out loud now — the
+ * context line under a translation, and the confirmation somebody gets when they
+ * tell Brissa what they read. Two mappings would drift, and the drift would show
+ * up as Brissa calling the same language two different things in two messages.
+ *
+ * An unknown code comes back unchanged rather than dropped, for the reason
+ * INV-core-14 states: losing it leaves a sentence with a hole in it.
+ */
+export const languageName = (code: string) => LANGUAGE_NAMES[code] ?? code
+
+const name = languageName
 
 /**
  * Slack renders `mrkdwn` inside a section, so a translated message containing

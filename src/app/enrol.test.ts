@@ -52,7 +52,9 @@ test('INV-app-74 a bare /brissa reports what Brissa currently thinks the caller 
 
   assert.deepEqual(outcome, { kind: 'reported', status: { kind: 'enrolled', reads: ['es', 'en'] } })
   assert.equal(w.sent.length, 1)
-  assert.match(w.sent[0]?.text ?? '', /es, then en/)
+  // Named, not coded. Somebody answered "es, then en" has been shown their own
+  // input back; "Spanish, then English" is Brissa saying what it understood.
+  assert.match(w.sent[0]?.text ?? '', /Spanish, then English/)
 })
 
 test('INV-app-75 a bare /brissa for somebody never enrolled says so, distinct from off', async () => {
@@ -78,7 +80,7 @@ test('INV-app-77 /brissa es en saves the languages, in order, and confirms them 
 
   assert.deepEqual(outcome, { kind: 'saved', reads: ['es', 'en'] })
   assert.deepEqual(w.writes, [{ teamId: 'T1', userId: 'U-nick', reads: ['es', 'en'] }])
-  assert.match(w.sent[0]?.text ?? '', /Saved.*es, then en/)
+  assert.match(w.sent[0]?.text ?? '', /Saved.*Spanish, then English/)
 })
 
 test('INV-app-78 /brissa off writes an empty enrolment and confirms translation has stopped', async () => {

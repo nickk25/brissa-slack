@@ -88,3 +88,14 @@ test('INV-app-67 a missing user token is a working state, not a fault', async ()
   const blank = readConfig({ ...complete, SLACK_USER_TOKEN: '   ' })
   assert.ok(blank.ok && blank.config.userToken === undefined)
 })
+
+test('INV-app-84 enrolment has somewhere to live, and the environment can move it', async () => {
+  // The default is fine on a laptop and wrong on Fly, where a path outside a
+  // volume means every deploy forgets everybody. Only this module reads the
+  // environment, so this is the one place that decision can be made.
+  const fallback = readConfig(complete)
+  assert.ok(fallback.ok && fallback.config.enrolmentPath === 'data/enrolment.json')
+
+  const onAVolume = readConfig({ ...complete, BRISSA_ENROLMENT_PATH: '/data/enrolment.json' })
+  assert.ok(onAVolume.ok && onAVolume.config.enrolmentPath === '/data/enrolment.json')
+})

@@ -478,4 +478,12 @@ one.
 - Nothing here writes to a log, a file, or any store outside `Enrolment` — a
   full run, query, set and off alike, makes no call to any logging surface.
   `test: INV-app-82`
+- A command refused before it became one still answers the person who typed it.
+  Untested for two commits: `refuseCommand` is reached only from `main.ts`, which
+  is excluded from both the test suite and the mutation run, so the fix for a
+  silent `/translate 0` was itself uncovered. Mutation testing found it, not
+  review. `test: INV-app-83`
+- Enrolment has somewhere to live, and the environment can move it. The default
+  is fine on a laptop and wrong on Fly, where a path outside a volume means every
+  deploy forgets everybody. `test: INV-app-84`
 

@@ -26,6 +26,14 @@ export interface Config {
    * one.
    */
   readonly userToken: string | undefined
+  /**
+   * Where enrolment is kept.
+   *
+   * A path rather than a directory decision made inside the store, because only
+   * this module reads the environment — and on Fly this has to point at a
+   * volume, or every deploy forgets everybody.
+   */
+  readonly enrolmentPath: string
   readonly model: string
   readonly readers: readonly Reader[]
   readonly channels: readonly ChannelPolicy[]
@@ -102,6 +110,7 @@ export function readConfig(env: Record<string, string | undefined>): Configured 
       botToken,
       appToken,
       userToken: env.SLACK_USER_TOKEN?.trim() || undefined,
+      enrolmentPath: env.BRISSA_ENROLMENT_PATH?.trim() || 'data/enrolment.json',
       model: env.BRISSA_MODEL?.trim() || 'claude-sonnet-5',
       readers,
       channels,

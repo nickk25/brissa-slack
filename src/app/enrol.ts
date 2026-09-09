@@ -17,6 +17,7 @@
  */
 
 import type { Enrolment, EnrolmentRecord } from '../core/enrolment.ts'
+import { languageName } from '../core/render.ts'
 import type { Language } from '../core/ports.ts'
 import type { EnrolArgument, EnrolCommand } from '../slack/enrol.ts'
 import { replyPrivately } from '../slack/shortcut.ts'
@@ -53,8 +54,20 @@ function line(text: string): readonly unknown[] {
   return [{ type: 'context', elements: [{ type: 'mrkdwn', text }] }]
 }
 
-const describeReads = (reads: readonly Language[]): string =>
-  reads.length === 1 ? (reads[0] ?? '') : `${reads.slice(0, -1).join(', ')}, then ${reads[reads.length - 1]}`
+/**
+ * The languages, as a person would say them.
+ *
+ * Named rather than coded, and through the same mapping the context line under a
+ * translation uses. Somebody who types `/brissa es en` and is answered "es, then
+ * en" has been shown their own input back; being answered "Spanish, then
+ * English" is Brissa saying what it understood.
+ */
+const describeReads = (reads: readonly Language[]): string => {
+  const named = reads.map(languageName)
+  return named.length === 1
+    ? (named[0] ?? '')
+    : `${named.slice(0, -1).join(', ')}, then ${named[named.length - 1]}`
+}
 
 /**
  * Tell somebody their command was refused before it ever became one.
@@ -140,6 +153,6 @@ export async function handleEnrol(ports: EnrolPorts, command: EnrolCommand): Pro
   }
   return await answer(
     { kind: 'saved', reads },
-    `Saved. You read: ${describeReads(reads)}. Brissa will translate anything you do not already read into ${reads[0]}.`,
+    `Saved. You read: ${describeReads(reads)}. Brissa will translate anything you do not already read into ${languageName(reads[0] ?? '')}.`,
   )
 }
