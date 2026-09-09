@@ -145,3 +145,36 @@ test('INV-app-82 nothing here writes to a log, a file, or any store outside Enro
   }
   assert.deepEqual(calls, [])
 })
+
+test('INV-app-117 no hint shows an example that would opt the reader out of a language', async () => {
+  // Naming a language is how somebody says *do not translate this for me*. The
+  // hints used to offer `/brissa es en` as the example, so a person following
+  // the suggestion literally silenced English for good — and one did, then
+  // reported that Brissa "was not translating English", which was Brissa doing
+  // exactly what they had been told to ask for.
+  //
+  // Asserted across every hint rather than the one that was reported, because
+  // there were three copies of it and only one was noticed.
+  const hints: string[] = []
+
+  const never = wire({})
+  await handleEnrol(never.ports, command({ kind: 'query' }))
+  hints.push(never.sent[0]?.text ?? '')
+
+  const off = wire({ initial: { 'T1:U-nick': { teamId: 'T1', userId: 'U-nick', reads: [] } } })
+  await handleEnrol(off.ports, command({ kind: 'query' }))
+  hints.push(off.sent[0]?.text ?? '')
+
+  assert.equal(hints.length, 2)
+  for (const hint of hints) {
+    assert.ok(hint.includes('/brissa'), hint)
+    // The specific shape that caused it: an example listing a second language.
+    assert.doesNotMatch(hint, /`\/brissa( [a-z]{2}){2,}/, `this hint tells somebody to opt out: ${hint}`)
+  }
+
+  // And the one that is allowed to list two is the confirmation, because by
+  // then the person has said it themselves rather than been shown it.
+  const saved = wire({})
+  await handleEnrol(saved.ports, command({ kind: 'set', reads: ['es', 'en'] }))
+  assert.match(saved.sent[0]?.text ?? '', /Spanish, then English/)
+})

@@ -5,7 +5,17 @@ import { describe } from './report.ts'
 test('INV-app-42 a message nobody was told about says why in one word', async () => {
   assert.equal(describe({ kind: 'nobody-to-tell' }), 'nobody-to-tell')
   assert.equal(describe({ kind: 'rejected', because: 'not-a-message' }), 'rejected')
-  assert.equal(describe({ kind: 'lookup-failed', detail: 'refused' }), 'lookup-failed')
+})
+
+test('INV-app-115 a lookup that failed says why, because now it can fail for everybody at once', async () => {
+  // It used to print the bare word, and that was tolerable while `Directory`
+  // was a literal built at boot: it could not really fail. It reads a file now,
+  // so an unreadable or corrupt enrolment file fails *every* message rather
+  // than only `/brissa` — and a hundred identical lines saying `lookup-failed`
+  // are a log announcing that something is wrong while refusing to say what.
+  const line = describe({ kind: 'lookup-failed', detail: 'EACCES: permission denied, open /data/enrolment.json' })
+  assert.ok(line.startsWith('lookup-failed'), line)
+  assert.ok(line.includes('EACCES'), 'the reason is the only part worth reading')
 })
 
 test('INV-app-43 readers are counted by what happened to them, skips by their reason', async () => {

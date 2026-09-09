@@ -289,13 +289,14 @@ switching Brissa on in a channel requires that channel's id, and Slack's own
 interface does not show it anywhere. Watching a message arrive is how you find
 out what to put in `BRISSA_CHANNELS`.
 
-- A reader is a person and the languages they read, in their order — the first is
-  the one messages are translated into, so `es,en` and `en,es` are different
-  people to serve. `test: INV-app-36`
-- A reader with no languages is refused rather than created. `shouldAsk` reads an
-  empty list as "has not finished setting up" and stays silent, which from the
-  outside is indistinguishable from Brissa being broken. `test: INV-app-37`
-- An entry that is not a reader says so by name. `test: INV-app-38`
+- `BRISSA_READERS` is not needed to start, and is refused if it is set. It used
+  to be parsed here into the reader list and it used to win: a person could run
+  `/brissa es`, be told "Saved", and go on being served as though they had said
+  something else, because this variable was read once at boot and the enrolment
+  they wrote was read by nothing. Who reads what is now theirs to say, so the
+  variable is gone rather than merely unused — one that is present and inert is
+  how the next person asking "why won't my languages stick" gets misled exactly
+  as its first reader was. `test: INV-app-116`
 - A channel is off unless it is listed, and no channels is not an error but the
   honest first state. `test: INV-app-39`
 - Every problem is reported at once, not the first one. `test: INV-app-40`
@@ -304,6 +305,11 @@ out what to put in `BRISSA_CHANNELS`.
   decision recorded in `docs/DECISIONS.md` and scored by the eval.
   `test: INV-app-41`
 - A message nobody was told about says why in one word. `test: INV-app-42`
+- A lookup that failed says why, not just that it did. `Directory` used to be a
+  literal built at boot and could not really fail; it reads the enrolment file
+  now, so one unreadable file fails every message rather than only `/brissa`,
+  and a hundred lines reading `lookup-failed` would announce that something is
+  wrong while refusing to say what. `test: INV-app-115`
 - Readers are counted by what happened to them, and skips by their reason: a run
   of thirty `channel-disabled` and one delivery should read as two numbers, not
   thirty-one lines. `test: INV-app-43`
@@ -376,9 +382,18 @@ A way to say "translate for me" from inside Slack existed only as `BRISSA_READER
 an environment variable on somebody's machine — every new person meant editing
 that file and restarting the process, which does not scale past one and was the
 whole reason nobody else on the team could use Brissa. `enrol.ts` is that door:
-`/brissa es en` to say what you read, `/brissa` to see what Brissa currently
-thinks, `/brissa off` to stop. `main.ts` points a real `Enrolment` at it, so
-unlike the HTTP path below this one is reachable by anybody in the workspace.
+`/brissa es` to say what you read, `/brissa` to see what Brissa currently thinks,
+`/brissa off` to stop.
+
+This paragraph used to end by saying the door was "reachable by anybody in the
+workspace", and that was true and beside the point: the door opened onto nothing.
+`main.ts` pointed a real `Enrolment` at `enrol.ts` and a `Directory` built from
+`BRISSA_READERS` at everything else, so what somebody saved and what Brissa
+decided against were different facts, and a bare `/brissa` reported the first
+while the product ran on the second. It is one fact now — `createFileDirectory`
+reads the file `/brissa` writes — and `INV-app-114` is the test that fails if
+they are ever separated again. The sentence is kept rather than deleted because
+a contract that quietly drops its own overstatement teaches nothing.
 
 `handleRequest` still has nothing pointed at it: `manifest.json` enables Socket
 Mode and declares no request URL, so Slack never POSTs events. The HTTP path is
@@ -473,6 +488,16 @@ one.
   name one language and say what naming it means.
 - `/brissa off` writes an empty enrolment and confirms translation has
   stopped. `test: INV-app-78`
+- What `/brissa` saves is what the next message is decided against — one fact,
+  one file, no restart. Wired over the real store rather than a literal, because
+  every other test here builds its directory from a list and that is precisely
+  why none of them could see the two halves disagree. `test: INV-app-114`
+- No hint shows an example that would opt the reader out of a language. Naming
+  a language is how somebody says *do not translate this for me*, and the hints
+  offered `/brissa es en` — so following the suggestion literally silenced
+  English for good. Someone did, and reported it as Brissa failing to translate
+  English, which was Brissa doing exactly what they had been told to ask for.
+  `test: INV-app-117`
 - A command this app does not own is left alone. `test: INV-app-79`
 - A store failure is reported as its own outcome, never answered as if nothing
   were on file. `test: INV-app-80`
