@@ -22,7 +22,7 @@ import type { History } from '../core/history.ts'
 import { noticeText, renderNotice, renderTranslation, type Notice, type Source } from '../core/render.ts'
 import type { Translator } from '../core/translator.ts'
 import type { SlashCommand } from '../slack/command.ts'
-import { replyPrivately } from '../slack/shortcut.ts'
+import { RESPONSE_URL_BUDGET, replyPrivately } from '../slack/shortcut.ts'
 
 /** The command this app owns. Anything else is not ours to answer. */
 export const TRANSLATE_COMMAND = '/translate'
@@ -208,45 +208,123 @@ export async function handleCommand(ports: CommandPorts, command: SlashCommand):
   // it is a broken button.
   if (gathered.sources.length === 0) return await notice('nothing-to-translate')
 
-  const results = await Promise.all(
-    gathered.sources.map(async (source) => {
-      try {
-        return { source, result: await ports.translator.translate({ text: source.text, reads }) }
-      } catch {
-        return { source, result: { kind: 'failed' as const, detail: 'threw' } }
+  // How many translations run at once. Not a throughput knob: it is the ceiling
+  // on how many model calls one person's command can have in flight, and twenty
+  // of those fired together is a self-inflicted rate limit.
+  const AT_ONCE = 4
+
+  // One answer is held back, always. `response_url` accepts five, and a stream
+  // that spends all five on progress has no way to deliver whatever is left —
+  // the tail would vanish with nothing saying so. Four go out as the
+  // conversation fills in; the fifth carries the remainder, whatever it is.
+  const PROGRESSIVE = RESPONSE_URL_BUDGET.responses - 1
+
+  const sources = gathered.sources
+  const rendered: (readonly unknown[] | undefined)[] = new Array(sources.length)
+  const finished: boolean[] = new Array(sources.length).fill(false)
+
+  let nextToEmit = 0
+  let sendsUsed = 0
+  let translatedCount = 0
+  let anyFailed = false
+  let failureReported = false
+  let sendFailure: string | undefined
+
+  /**
+   * Send whatever is ready **in order**, and only in order.
+   *
+   * A conversation read out of sequence is not a conversation, so a finished
+   * translation waits for every earlier one. If 1, 2 and 4 are done, 1 and 2 go
+   * out and 4 waits for 3 — which is what makes streaming safe here rather than
+   * merely faster.
+   */
+  const emitReady = async (final: boolean): Promise<void> => {
+    let upTo = nextToEmit
+    const blocks: unknown[] = []
+    while (upTo < sources.length && finished[upTo] === true) {
+      blocks.push(...(rendered[upTo] ?? []))
+      upTo += 1
+    }
+
+    // Said once, at the end, and it has to survive an empty tail. A failure that
+    // lands after everything before it was already sent would otherwise leave
+    // nothing to attach it to — and this is the one thing that must never be
+    // dropped, because from the outside a missing translation and a translation
+    // that was never attempted look identical.
+    const mustReportFailure = final && anyFailed && !failureReported
+    if (upTo === nextToEmit && !mustReportFailure) return
+
+    const isTail = upTo === sources.length
+    // Everything left goes with the reserved answer rather than being dropped.
+    if (!isTail && sendsUsed >= PROGRESSIVE) return
+
+    // The prefix advanced but had nothing to show — every message in it was
+    // already readable. Nothing to send, and the next one must not wait on it.
+    if (blocks.length === 0 && !mustReportFailure) {
+      nextToEmit = upTo
+      return
+    }
+
+    const closing = mustReportFailure ? renderNotice('translation-failed') : []
+    if (mustReportFailure) failureReported = true
+    const summary = `Translated ${translatedCount} message${translatedCount === 1 ? '' : 's'}.`
+    const replied = await send(command.responseUrl, {
+      blocks: [...blocks, ...closing],
+      text: closing.length > 0 ? `${summary} ${noticeText('translation-failed')}` : summary,
+    })
+    sendsUsed += 1
+    nextToEmit = upTo
+    if (!replied.ok) sendFailure = replied.detail
+  }
+
+  // Serialised, because several translations can finish inside one tick and two
+  // overlapping flushes would race on how far the stream has got.
+  let inOrder: Promise<void> = Promise.resolve()
+  const flush = (final: boolean): Promise<void> => {
+    inOrder = inOrder.then(() => emitReady(final))
+    return inOrder
+  }
+
+  let cursor = 0
+  await Promise.all(
+    Array.from({ length: Math.min(AT_ONCE, sources.length) }, async () => {
+      for (;;) {
+        const index = cursor
+        cursor += 1
+        const source = sources[index]
+        if (source === undefined) return
+
+        let result
+        try {
+          result = await ports.translator.translate({ text: source.text, reads })
+        } catch {
+          result = { kind: 'failed' as const, detail: 'threw' }
+        }
+
+        if (result.kind === 'translated') {
+          // Text typed into the command is quoted back to nobody:
+          // `renderTranslation` omits the anchor when there is no source to
+          // point at, because repeating somebody's own words under their own
+          // name is noise.
+          rendered[index] = gathered.anchored
+            ? renderTranslation(result.translation, source)
+            : renderTranslation(result.translation)
+          translatedCount += 1
+        } else {
+          // 'silent' contributes nothing: that message was already readable.
+          rendered[index] = []
+          if (result.kind === 'failed') anyFailed = true
+        }
+        finished[index] = true
+        await flush(false)
       }
     }),
   )
 
-  const translatedBlocks: unknown[] = []
-  let translatedCount = 0
-  let anyFailed = false
-  for (const { source, result } of results) {
-    if (result.kind === 'translated') {
-      // Text typed into the command has no author but the person who typed it,
-      // and quoting somebody back to themselves is noise. `renderTranslation`
-      // omits the anchor entirely when there is no source to point at.
-      // Text typed into the command is quoted back to nobody: `renderTranslation`
-      // omits the anchor entirely when there is no source to point at, because
-      // repeating somebody's own words under their own name is noise.
-      translatedBlocks.push(
-        ...(gathered.anchored ? renderTranslation(result.translation, source) : renderTranslation(result.translation)),
-      )
-      translatedCount++
-    } else if (result.kind === 'failed') {
-      anyFailed = true
-    }
-    // 'silent' contributes nothing: that message was already readable.
-  }
+  await flush(true)
 
+  if (sendFailure !== undefined) return { kind: 'unanswerable', detail: sendFailure }
   if (translatedCount === 0) return await notice(anyFailed ? 'translation-failed' : 'already-readable')
 
-  // A partial failure among several messages is still visible, never
-  // swallowed — appended once rather than once per failed message, since what
-  // the reader needs is "something was missed", not a count of how often.
-  const blocks = anyFailed ? [...translatedBlocks, ...renderNotice('translation-failed')] : translatedBlocks
-  const summary = `Translated ${translatedCount} message${translatedCount === 1 ? '' : 's'}.`
-  const text = anyFailed ? `${summary} ${noticeText('translation-failed')}` : summary
-
-  return await answer({ kind: 'translated', count: translatedCount }, blocks, text)
+  return { kind: 'translated', count: translatedCount }
 }
