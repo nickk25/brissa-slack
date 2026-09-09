@@ -49,5 +49,20 @@ primary_region = "fra"   # Frankfurt. EU data residency for German clients —
 [[restart]]
   policy = "always"
 
+# The one thing that survives a deploy.
+#
+# Enrolment is a file, and a file in the image is gone the moment a new image
+# replaces it — every deploy would forget the whole team and answer them
+# "Brissa does not know which languages you read yet". Everything else Brissa
+# holds is memory on purpose and is meant to go: which deliveries were already
+# seen, what a channel's policy is.
+#
+# `BRISSA_ENROLMENT_PATH` must point inside this mount, and it is set as a
+# secret rather than written here so the two cannot drift apart silently — see
+# docs/DEPLOY.md.
+[mounts]
+  source      = "brissa_data"
+  destination = "/data"
+
 [processes]
   app = "npm start"
