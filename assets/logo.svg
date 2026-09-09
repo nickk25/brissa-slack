@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Brissa">
+  <title>Brissa</title>
+
+  <!--
+    A breeze, which is what the name means and what the product is.
+
+    Not a speech bubble, not a globe, not two letters facing each other. Every
+    translation app reaches for those and they all say the same thing: LOOK,
+    TRANSLATION. Brissa's argument is the opposite — it stays quiet unless a
+    message holds something you cannot read, it is invisible to the other
+    organisation, and when it speaks only you see it.
+
+    So: moving air. Three strokes, each a shallow wave, each fading as it
+    travels. No loop and no flourish — this is read at forty pixels in a member
+    list before it is ever read at five hundred, and a loop at that size is a
+    smudge. The first attempt had one and that is exactly what it became.
+
+    The gradient is in user space, not per path, so all three fade against the
+    same horizon rather than each starting over.
+  -->
+
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="140" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1d2748"/>
+      <stop offset="1" stop-color="#0b0f1d"/>
+    </linearGradient>
+
+    <linearGradient id="air" x1="72" y1="0" x2="440" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0.00" stop-color="#8ff0d4"/>
+      <stop offset="0.45" stop-color="#7fd0f2"/>
+      <stop offset="1.00" stop-color="#6fb4ea" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+
+  <!--
+    Edge to edge, and this was settled by trying it rather than by reasoning.
+    Rounding the artwork leaves transparent corners, and Slack's app-settings
+    preview flattens transparency onto white — verified with a genuinely
+    alpha-zero corner pixel, which still came out as white notches. Meanwhile
+    every surface that actually shows the icon to a person, the member list and
+    the message author line, applies its own rounding.
+
+    So: fill the square, let each surface mask it. An icon that looks slightly
+    plain in a settings page nobody revisits beats one with white corners in
+    every channel.
+  -->
+  <rect width="512" height="512" fill="url(#ground)"/>
+
+  <g fill="none" stroke="url(#air)" stroke-linecap="round" stroke-width="30">
+    <!-- Shorter and quieter above: most of what arrives needs nothing. -->
+    <path d="M 150 168 C 214 140 278 196 340 168" opacity="0.72"/>
+
+    <!-- The long one through the middle. The message itself, passing. -->
+    <path d="M 78 256 C 158 222 238 290 318 256 C 366 236 402 246 424 258"/>
+
+    <path d="M 150 344 C 214 316 278 372 340 344" opacity="0.72"/>
+  </g>
+</svg>
