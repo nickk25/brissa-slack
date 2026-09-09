@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { test } from 'node:test'
 import { readChannels, readConfig, readReaders } from './config.ts'
 
@@ -129,7 +130,10 @@ test('INV-app-102 OAuth is configured wholly or not at all', async () => {
 
   const whole = readConfig({
     ...complete,
-    BRISSA_TOKENS_KEY: 'a'.repeat(44),
+    // A real 32 bytes. The old fixture was 44 characters of 'a', which decodes
+    // to 33 — the store would have refused it, and only the config test's never
+    // handing it to the store kept that hidden.
+    BRISSA_TOKENS_KEY: randomBytes(32).toString('base64'),
     SLACK_SIGNING_SECRET: 'a-signing-secret',
     SLACK_CLIENT_ID: '123.456',
     SLACK_CLIENT_SECRET: 'shh',

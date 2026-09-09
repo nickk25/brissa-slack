@@ -10,7 +10,6 @@
  * It is also the only file that reads `process.env`.
  */
 
-import { randomBytes } from 'node:crypto'
 import { argv } from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { defaultTranslator } from '../llm/decide.ts'
@@ -23,7 +22,7 @@ import { readShortcut } from '../slack/shortcut.ts'
 import { noticeText, renderNotice } from '../core/render.ts'
 import { createSlackApi } from '../slack/web.ts'
 import { createFileEnrolment } from '../store/enrolment.ts'
-import { createFileTokens } from '../store/tokens.ts'
+import { createFileTokens, TokenStoreUnreadable } from '../store/tokens.ts'
 import { createMemoryDirectory } from '../store/memory.ts'
 import { createMemorySeen } from '../store/seen.ts'
 import { readConfig } from './config.ts'
@@ -94,16 +93,40 @@ export async function main(): Promise<void> {
   // survives if it is on a volume. Everything else Brissa knows — who has been
   // seen, what a channel's policy is — is still memory and still goes.
   const enrolment = createFileEnrolment(config.enrolmentPath)
-  const tokens = createFileTokens(config.tokensPath, config.tokensKey || randomBytes(32).toString('base64'))
+  const tokens = config.tokensKey === '' ? undefined : createFileTokens(config.tokensPath, config.tokensKey)
 
   // Absent is a working state, and the whole flow is off rather than half on.
   // `readConfig` already refuses a partial configuration for the same reason: a
   // link built from an id with no secret behind it walks somebody through
   // Slack's consent screen to a callback that cannot complete.
+  // Opened once, here, so a key that does not match the file is a refusal to
+  // start with a sentence somebody can act on — rather than every `/translate`
+  // from everybody failing quietly, one request at a time, behind a log line
+  // that says `Error`. `write` and `forget` read the file first, so a mismatch
+  // wedges the store completely; that is worth finding out at 09:00 and not at
+  // the first person who tries to use it.
+  if (tokens !== undefined) {
+    try {
+      await tokens.read('startup', 'check')
+    } catch (err) {
+      if (err instanceof TokenStoreUnreadable) {
+        console.error(`Brissa cannot start: ${err.message}`)
+        console.error('\nEither restore the BRISSA_TOKENS_KEY that wrote it, or delete the file and have')
+        console.error('everybody run `/brissa connect` again. Nothing in it is recoverable without the key,')
+        console.error('which is the point of encrypting it.')
+        process.exitCode = 1
+        return
+      }
+      throw err
+    }
+  }
+
   const connecting: ConnectPorts | undefined =
     config.oauth === undefined
       ? undefined
-      : {
+      : tokens === undefined
+        ? undefined
+        : {
           config: {
             clientId: config.oauth.clientId,
             clientSecret: config.oauth.clientSecret,
@@ -221,7 +244,9 @@ export async function main(): Promise<void> {
         // only a fallback for the person it belongs to — everybody else brings
         // their own through `/brissa connect`, and until they do they are
         // refused by name rather than served with somebody else's access.
-        const mine = await tokens.read(read.command.teamId, read.command.invokedBy)
+        // No store at all means OAuth is off, and the configured token is the
+        // only one there is — the state Brissa ran in before any of this.
+        const mine = tokens === undefined ? undefined : await tokens.read(read.command.teamId, read.command.invokedBy)
         const theirs =
           mine === undefined
             ? historyPorts
@@ -248,9 +273,15 @@ export async function main(): Promise<void> {
         const why = 'detail' in outcome ? ` — ${outcome.detail}` : ''
         console.log(`  ${read.command.channelId}  /translate  ${what}${why}`)
       })().catch((err: unknown) => {
-        // Same reason. A `tokens.json` nobody can read must break `/translate`,
-        // not the process every translation arrives through.
-        console.error(`  /translate failed: ${String((err as Error)?.name ?? 'error')}`)
+        // A `tokens.json` nobody can read must break `/translate`, not the
+        // process every translation arrives through.
+        //
+        // The name only, except for the one error whose message is safe by
+        // construction: `TokenStoreUnreadable` names a path and nothing else,
+        // and it is precisely the message an operator needs. Every other error
+        // on this path came near a live user token.
+        const said = err instanceof TokenStoreUnreadable ? err.message : String((err as Error)?.name ?? 'error')
+        console.error(`  /translate failed: ${said}`)
       })
     },
     onInteractive: (payload) => {

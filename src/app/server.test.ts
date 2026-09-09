@@ -207,6 +207,8 @@ test('INV-app-104 a request target Node accepts and URL refuses does not take th
     0,
   )
 
+  try {
+
   const ask = (line: string): Promise<string> =>
     new Promise((resolve) => {
       const socket = connect(running.port, '127.0.0.1', () => socket.write(`${line}\r\nHost: x\r\n\r\n`))
@@ -230,7 +232,9 @@ test('INV-app-104 a request target Node accepts and URL refuses does not take th
   // Still answering afterwards, which is the whole assertion: the process is
   // the one holding the Slack connection.
   assert.match(await ask('GET /healthz HTTP/1.1'), /^HTTP\/1\.1 200 /)
-  await running.close()
+  } finally {
+    await running.close()
+  }
 })
 
 test('INV-app-105 a route that throws is answered, not left to take the process with it', async () => {
@@ -248,6 +252,8 @@ test('INV-app-105 a route that throws is answered, not left to take the process 
     0,
   )
 
+  try {
+
   const answer = await fetch(`http://127.0.0.1:${running.port}/oauth/start`)
   assert.equal(answer.status, 500)
   // Nothing of the fault reaches the browser: the message is somebody's stack,
@@ -256,33 +262,42 @@ test('INV-app-105 a route that throws is answered, not left to take the process 
 
   // Still serving, which is the assertion that matters.
   assert.equal((await fetch(`http://127.0.0.1:${running.port}/healthz`)).status, 200)
-  await running.close()
+  } finally {
+    await running.close()
+  }
 })
 
-test('INV-app-106 a request Node cannot even parse is refused at the socket', async () => {
-  // Before `respond` is ever reached. Left to Node's default this is a silently
-  // destroyed socket, which is survivable — but the default is not ours to
-  // rely on, so it is stated and held here.
+test('INV-app-106 a request Node cannot even parse is refused, and the process survives it', async () => {
+  // Weaker than it first read. Node's own default for `clientError` already
+  // answers 400, so deleting our handler left this passing — verified by
+  // deleting it. What is genuinely ours to hold is that the process is still
+  // there afterwards, which is the property that matters: this is the process
+  // holding Brissa's websocket.
   const running = await startServer(
     { start: () => ({ location: 'https://slack.com' }), callback: async () => ({ status: 200, body: 'ok' }) },
     0,
   )
 
-  const seen = await new Promise<string>((resolve) => {
-    const socket = connect(running.port, '127.0.0.1', () => socket.write('GET /healthz HTTP/9.9\r\n\r\n'))
-    let out = ''
-    socket.on('data', (d) => {
-      out += String(d)
+  try {
+    const seen = await new Promise<string>((resolve) => {
+      const socket = connect(running.port, '127.0.0.1', () => socket.write('GET /healthz HTTP/9.9\r\n\r\n'))
+      let out = ''
+      socket.on('data', (d) => {
+        out += String(d)
+      })
+      socket.on('close', () => resolve(out))
+      socket.on('error', () => resolve(''))
+      setTimeout(() => {
+        socket.destroy()
+        resolve(out)
+      }, 500).unref()
     })
-    socket.on('close', () => resolve(out))
-    socket.on('error', () => resolve('socket error'))
-    setTimeout(() => {
-      socket.destroy()
-      resolve(out || 'no answer')
-    }, 500).unref()
-  })
 
-  assert.ok(seen.startsWith('HTTP/1.1 400') || seen === 'socket error', `got: ${JSON.stringify(seen.slice(0, 40))}`)
-  assert.equal((await fetch(`http://127.0.0.1:${running.port}/healthz`)).status, 200)
-  await running.close()
+    assert.ok(!seen.startsWith('HTTP/1.1 2'), `a malformed request must not succeed: ${JSON.stringify(seen.slice(0, 40))}`)
+    assert.equal((await fetch(`http://127.0.0.1:${running.port}/healthz`)).status, 200)
+  } finally {
+    // In `finally` because a failed assertion above would otherwise leave the
+    // listener open and hang the file until the runner's timeout.
+    await running.close()
+  }
 })

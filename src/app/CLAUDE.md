@@ -379,14 +379,13 @@ whole reason nobody else on the team could use Brissa. `enrol.ts` is that door:
 `/brissa es en` to say what you read, `/brissa` to see what Brissa currently
 thinks, `/brissa off` to stop. What is still missing is the wiring — nothing in
 `main.ts` points a real `Enrolment` at `handleEnrol` yet, so this is a finished
-flow with nobody calling it, the same state the HTTP path below was in before
+flow reached from `main.ts`, like the HTTP path below and for the same reason:
 anybody deployed it.
 
 `handleRequest` still has nothing pointed at it: `manifest.json` enables Socket
 Mode and declares no request URL, so Slack never POSTs. That is the right default
 for something nobody has deployed, and it does mean the HTTP path is finished
-before it is reachable. `server.ts` (below) is the same story again: a listener
-
+before it is reachable. `server.ts` below is the listener that OAuth needed, and `main.ts` starts it.
 And nothing counts anything. `report` prints a line to a terminal.
 
 ## Two things the anchor decides
@@ -519,7 +518,7 @@ process is alive — the one thing `fly.toml` now needs `/healthz` to answer
 honestly, now that scale-to-zero no longer keeps this machine's absence from
 mattering (see `fly.toml` and `docs/DEPLOY.md`).
 
-Like `enrol.ts` and the HTTP path above, this is finished with nobody calling
+Like `enrol.ts` and the HTTP path above, this is reached from `main.ts` by
 `startServer` to a real `Routes` needs `src/slack/oauth.ts` and
 `src/store/tokens.ts` — this module owns neither, and assumes nothing about
 either beyond the shape of `Routes` itself.
@@ -608,8 +607,10 @@ revoking it failed* is the worst of the three outcomes.
   nothing of the fault reaches the browser. The guard was added after a
   malformed request target killed the process and then left untested, which
   mutation testing found rather than review. `test: INV-app-105`
-- A request Node cannot even parse is refused at the socket, before `respond` is
-  reached. Node's default is survivable but is not ours to rely on.
+- A request Node cannot even parse does not succeed, and the process survives
+  it. Weaker than it first read, and said so: Node's own default already answers
+  400, so this held with our handler deleted. What is genuinely ours is that the
+  process is still there afterwards — it holds Brissa's websocket.
   `test: INV-app-106`
 - A credential Slack has stopped honouring is dropped, not left on disk.
   Somebody who revoked Brissa in their own settings would otherwise be answered

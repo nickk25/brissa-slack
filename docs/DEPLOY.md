@@ -104,7 +104,7 @@ fly secrets set \
 
 ### Per-user OAuth: two more secrets, and a URL to register with Slack
 
-Not in either table above, because they are not (yet) read by
+Read by `src/app/config.ts` and required together — see
 `src/app/config.ts` — the module that owns "required" here — and are not
 enforced by anything running today. They exist for the OAuth exchange
 `src/slack/oauth.ts` performs and `src/app/server.ts`'s `/oauth/callback`
@@ -181,7 +181,7 @@ while, rather than guessing up front.
 ## 5. How to tell it is running
 
 Once `main.ts` actually starts `src/app/server.ts` (see §7 — as of this
-writing it does not yet), the health check `fly.toml` now points at
+The health check `fly.toml` points at is live: `main.ts` starts the server.
 `/healthz` is the fast signal:
 
 ```sh
@@ -231,15 +231,6 @@ again — there is no data migration to reverse.
 
 Said plainly, not buried:
 
-- **The health check `fly.toml` points at is not live yet.** `src/app/server.ts`
-  exists and is tested (`src/app/server.test.ts`), and `fly.toml` now declares
-  a `[[services]]` block with an `http_checks` entry against `/healthz` — but
-  nothing in `main.ts` calls `startServer` yet (see `src/app/CLAUDE.md`,
-  wiring lands.** Deployed as-is, the health check would poll a port nothing
-  listens on and the machine would never report healthy. Once `main.ts` is
-  wired, the check tells you what §5 says; until then, the log lines are still
-  the only honest signal, and `/healthz` answering nothing is a config problem
-  to fix in code, not a real outage to page anyone about.
 - **No metrics.** Counts of messages seen, translated, or skipped exist only
   as log lines, not as anything queryable.
 - **No persistence across restarts.** `src/store/memory.ts` and
@@ -282,8 +273,6 @@ Brissa is listening as claude-sonnet-5.
   connected
 ```
 
-That last line is the only proof there is. There is still no health check,
-because there is still no port to put one on.
 
 ## The secrets per-user OAuth added
 

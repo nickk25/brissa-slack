@@ -102,7 +102,10 @@ function seal(key: Buffer, plain: string): Sealed {
 }
 
 function unseal(key: Buffer, sealed: Sealed): string {
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(sealed.iv, 'base64'))
+  // `authTagLength` pinned, because `setAuthTag` accepts a shorter tag without
+  // complaint — a tag cut to four bytes still verified before this was here.
+  // "The tag is checked" is only worth saying if the tag is a whole tag.
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(sealed.iv, 'base64'), { authTagLength: 16 })
   decipher.setAuthTag(Buffer.from(sealed.tag, 'base64'))
   return Buffer.concat([decipher.update(Buffer.from(sealed.body, 'base64')), decipher.final()]).toString('utf8')
 }
@@ -129,7 +132,7 @@ async function readAll(path: string, key: Buffer): Promise<OnDisk> {
     // The key changed, or the file was tampered with, and from here the two are
     // indistinguishable — which is the point of the tag. Named by path only:
     // whatever is in there stays in there.
-    throw new Error(`Token store at ${path} could not be decrypted`)
+    throw new TokenStoreUnreadable(path)
   }
 }
 
@@ -167,6 +170,26 @@ async function writeAll(path: string, contents: OnDisk, key: Buffer): Promise<vo
  * memory — the same discipline `enrolment.ts` states: the same question
  * asked twice must get the same answer.
  */
+/**
+ * Thrown when the file exists and this key cannot open it.
+ *
+ * Its own type because the answer is operational and specific — the key
+ * changed, or the file did — and every caller that catches it should be able to
+ * say so rather than reporting "an error". The message names the path and
+ * nothing else.
+ */
+export class TokenStoreUnreadable extends Error {
+  // Written out rather than a parameter property: types are stripped here, not
+  // compiled, and strip-only mode has no way to emit the assignment.
+  readonly path: string
+
+  constructor(path: string) {
+    super(`Token store at ${path} could not be decrypted — the key does not match the file`)
+    this.path = path
+    this.name = 'TokenStoreUnreadable'
+  }
+}
+
 export function createFileTokens(path: string, keyMaterial: string): Tokens {
   // Thirty-two bytes, and refused rather than padded. A short key silently
   // stretched is a file that looks encrypted and is not, and nothing later

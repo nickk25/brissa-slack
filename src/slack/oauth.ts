@@ -46,12 +46,16 @@
  * own login, just a query parameter) to a victim as if it were a link to
  * click. If the victim consents on Slack's real page, Slack redirects back
  * with the victim's own `code` next to the attacker's `state`, and a
- * callback that trusted the signature alone would store the victim's token
- * under the attacker's identity. `sameAccount` below exists to close exactly
- * that gap: whatever wires this flow together MUST compare the account
- * `signState` was given against the account `exchangeCode` returns, and MUST
- * key `src/core/tokens.ts` by the latter — Slack's own answer — never by the
- * former, a claim the flow made about itself before Slack ever confirmed it.
+ * callback that trusted the signature alone and keyed the write by the
+ * state's claim would store the victim's token under the attacker's identity.
+ *
+ * Two separate guards, and worth keeping apart because an earlier version of
+ * this comment ran them together. **Keying by `exchangeCode`'s answer** — never
+ * by the state's claim — is what makes that theft impossible. `sameAccount`
+ * sits on top and refuses a flow the person never started: without it the
+ * victim is connected to themselves, which is a surprise and consent to
+ * something they did not begin, but not access handed to anyone else. Whatever
+ * wires this together must do both.
  *
  * **Never throws.** `exchangeCode` reads `ok` and `error` the same way
  * `web.ts` and `history.ts` already do, for the same reason: Slack answers

@@ -467,12 +467,15 @@ was. An attacker can start this flow honestly, receive a validly signed
 own login, just a query parameter — to a victim as if it were a link to
 click. If the victim consents on Slack's real page, Slack redirects back with
 the victim's own `code` next to the attacker's `state`; a caller that trusted
-the signature alone would store the victim's token under the attacker's
-identity. `sameAccount` closes that gap by comparing the account `signState`
-was given against the account `exchangeCode` actually returns — whatever
-wires this flow together **must** call it before writing to
-`src/core/tokens.ts`, and must key that write by `exchangeCode`'s answer,
-never by the state's own claim about who it was for. `state` is carried as an
+the signature alone **and keyed the write by the state's claim** would store
+the victim's token under the attacker's identity.
+
+Two guards, kept apart because an earlier version of this ran them together.
+**Keying by `exchangeCode`'s answer** is what makes the theft impossible.
+`sameAccount` sits on top and refuses a flow the person never started —
+without it the victim is connected to themselves, a surprise and consent to
+something they did not begin, but not access handed to anybody else. Whatever
+wires this together must do both. `state` is carried as an
 `OAuthState` — `{ teamId, userId }`, the same pair every other port in this
 product keys by — specifically so this comparison always has something to
 compare.

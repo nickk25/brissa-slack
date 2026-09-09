@@ -62,11 +62,14 @@ test('INV-app-94 consent is filed under whoever Slack says gave it, not whoever 
   // here rather than left to whoever wires this up.
   //
   // An attacker starts the flow honestly and receives a validly signed state
-  // carrying their own identity. They send that link to somebody else. The
-  // victim authorises, genuinely, and Slack reports the victim. If the state's
-  // claim were believed, the victim's access would be stored under the
-  // attacker's name — and `/translate` would then read the victim's channels
-  // for the attacker.
+  // carrying their own identity, then sends that link to somebody else. The
+  // victim authorises, genuinely, and Slack reports the victim.
+  //
+  // Precise about what this buys, because an earlier version of this comment
+  // was not: the write below is keyed by Slack's answer, so without this check
+  // the victim would be connected *to themselves* — consent to something they
+  // did not begin, not access handed to anybody else. The keying is what makes
+  // theft impossible; this refuses a flow nobody started.
   const w = wire({ fetchImpl: exchanges({ team: 'T1', user: 'U-victim' }) })
   const attackersLink = signState(SECRET, { teamId: 'T1', userId: 'U-attacker' }, NOW)
 
