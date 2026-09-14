@@ -114,3 +114,23 @@ corpus through a stronger model as the reference.
 
 Disagreement is the finding, not a failure, so the run exits zero. A case that
 could not be measured is recorded as such and never counted as agreement.
+
+**Running it spends real money, and most questions do not need it.** A full
+sweep is four model/corpus configurations at three runs per case — a few hundred
+calls on a key scoped to this project alone. That cost is the price of a
+committed measurement and it is worth paying, because the recorded score carries
+the prompt's hash and is meant to describe what actually ships.
+
+It is not the price of curiosity. Questions like "does this prompt work in the
+other direction" or "does that rule fire on this input" should be put to an
+agent running the same model, which costs nothing extra, and the answer treated
+as what it is: the same model in a different wrapper, adequate for a coarse
+question and a different measurement for a fine one. Say which one was run
+rather than blurring them.
+
+The habit was learned the expensive way: several throwaway probes went through
+the API before anybody asked why, and the key stopped working shortly after.
+Reach for `--model` and `--runs` when a partial run would answer the question,
+and before editing a prompt at all, check whether the behaviour can be had
+without one — `/say` reuses `decide.md` with `reads: [target]` and therefore
+cost nothing to build.
