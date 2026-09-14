@@ -302,3 +302,26 @@ awaiting one would cost it everything, and `src/app` is what awaits.
 `hasNothingToRead` is the only place where being wrong is cheap in one direction
 and expensive in the other. A false "nothing to read" loses a message silently; a
 false "something to read" costs one model call. Prefer asking.
+
+## Rendering the other direction
+
+`renderOutbound` is for text the caller wrote, going out, rather than text
+somebody else wrote, coming in. Two things follow and neither is cosmetic.
+
+**It says that nothing was sent.** The command is `/say`, which reads as though
+it will say it — and it will not; it hands back text to copy. A name that
+over-promises has to be corrected somewhere, and directly under the answer is
+the only place the correction is certain to be read. The tempting tidy-up is to
+reuse the line under a translation, "Translated from Spanish · only visible to
+you", which is true, sounds right, and drops the one fact the caller needs.
+
+**Text that needed no change still comes back.** Asked for German with something
+already German, the translator says nothing — the right answer to "does this
+need translating" and a useless one to somebody who asked for something to
+paste. The original is returned marked as unchanged, so there is always
+something to copy.
+
+- Outbound hands back the text itself, named by the language it is now in, and
+  says so rather than pretending it translated when it did not.
+  `test: INV-core-31`
+- The outbound line says nothing was sent. `test: INV-core-32`

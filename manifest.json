@@ -26,6 +26,12 @@
       {
         "command": "/brissa",
         "description": "Enrol yourself: which languages you read, in order. Only you see the answer."
+      },
+      {
+        "command": "/say",
+        "description": "Write something in another language. Only you see the answer; nothing is sent.",
+        "usage_hint": "de: Hola, ¿podemos mover la reunión?",
+        "should_escape": false
       }
     ]
   },

@@ -295,6 +295,42 @@ const NOTICES: Record<Notice, string> = {
   'cannot-read-here': 'Could not read this channel. The shortcut on a single message still works.',
 }
 
+/**
+ * The other direction: something you wrote, in the language you need it in.
+ *
+ * Everything else in this file renders a message somebody else wrote so you can
+ * read it. This renders a message *you* wrote so somebody else can. Two things
+ * follow from that and neither is cosmetic.
+ *
+ * **It says that nothing was sent.** The command is called `/say`, which reads
+ * as though it will say it — and it will not; it hands you text to copy. A name
+ * that over-promises is a name that has to be corrected somewhere, and the only
+ * place the correction is certain to be read is directly under the answer.
+ *
+ * **Text that needed no change still comes back.** If you ask for German and
+ * what you wrote already reads as German, the translator says nothing — the
+ * right answer to "does this need translating", and a useless one to somebody
+ * who asked for something to paste. So the original is returned with a line
+ * saying why it is unchanged. There is always something to copy.
+ */
+export function renderOutbound(text: string, into: string, unchanged = false): readonly Block[] {
+  const language = name(into)
+  return [
+    { type: 'section', text: { type: 'mrkdwn', text: escapeKeepingReferences(text) } },
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: unchanged
+            ? `Already reads as ${language} · nothing was sent — copy it into your message`
+            : `${language} · nothing was sent — copy it into your message`,
+        },
+      ],
+    },
+  ]
+}
+
 /** One line, only for the person who asked. */
 export function renderNotice(notice: Notice): readonly Block[] {
   return [{ type: 'context', elements: [{ type: 'mrkdwn', text: NOTICES[notice] }] }]

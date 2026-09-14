@@ -291,3 +291,34 @@ with what a human would say. The first real run is still owed.
 probed line's missing context turns out to change its answer often enough to
 matter — the corpus does not yet have a case built to check that.
 
+
+## `/say` reuses the prompt rather than growing a second one
+
+**Decided 14 September 2026.** `/say de: …` translates outbound text by calling
+the existing `Translator` with `reads: [target]`. No `say.md`, no second corpus,
+no second evaluation.
+
+I was about to write all three. An adversarial review pointed out the third
+option I had not listed: `decide.md` fills `{{READS}}` and `{{TARGET}}` from
+`reads`, so `reads: ['de']` produces a prompt that says the reader reads German
+and translates the whole message into German — which is `/say`, exactly. The
+reader *is* the recipient. `Translator.reads` documents itself as "the languages
+the reader reads; everything else is a candidate", and outbound is that sentence
+read in the other direction rather than a new idea.
+
+**Measured before relying on it**, in that configuration: Spanish in, German
+out; German in, left alone; mention, URL, `28.9.` and `13.00` all intact.
+
+**What is not measured**: the recorded evals scored `reads: [es, en]` against
+German and English messages. Spanish input with `reads: [de]` has no corpus, so
+the direction is exercised but not scored. A dedicated `say.md` would have been
+*equally* unscored and would additionally have had no decision to measure —
+`prompt-evaluated` checks that a recorded run exists for a prompt's hash, not
+that the score is any good, so a new prompt would have satisfied the gate
+ceremonially.
+
+**Revisit if** real use shows the courtesy exception firing on messages somebody
+actually needed sent. `/say de: Gracias` comes back silent today; that is handled
+by returning the original marked unchanged rather than by weakening restraint for
+everybody. By the time it is a problem there will be a corpus of real `/say`
+inputs to measure a dedicated prompt against, which there is not now.

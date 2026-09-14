@@ -673,3 +673,49 @@ revoking it failed* is the worst of the three outcomes.
   a refusal Brissa reached on its own knows why from `because` alone.
   `test: INV-app-113`
 
+
+## `/say`, the arrow pointing the other way
+
+Everything above this line makes a message you cannot read into one you can.
+`/say` makes something you wrote into something the other side can read, and it
+is the smaller of the two handlers on purpose.
+
+**No `Directory`.** `shortcut.ts` asks who is reading and what they already
+read; `/say` is told the target outright, because the person who needs the
+German is not in this workspace and never will be. So there is nobody to look
+up, and requiring enrolment would refuse the one command that needs none.
+
+**No new prompt.** `decide.md` takes the languages the reader reads and
+translates into the first of them; called with the recipient's language it
+translates into exactly that — the reader *is* the recipient, which is what
+`Translator.reads` has always meant, only pointed the other way. An adversarial
+review caught this before a second prompt, a second corpus and a second
+evaluation were written to say what the first already said. Confirmed against
+the model in that configuration before it was relied on: Spanish in, German out,
+German left alone, mentions and `28.9.` and `13.00` intact.
+
+**Nothing is sent.** Everything answers through `response_url` and there is no
+path from this module to posting anywhere. That is what makes the name a small
+lie and `renderOutbound`'s line the correction.
+
+- The translator is asked for the recipient's language and the caller's text,
+  and nothing else. If somebody "fixes" this to use the caller's own enrolled
+  languages, `/say` quietly becomes `/translate` and every outbound message
+  comes back in the language it was already in. `test: INV-app-118`
+- Somebody who never ran `/brissa` is served. `test: INV-app-119`
+- Nothing is posted anywhere but the caller's own `response_url`.
+  `test: INV-app-120`
+- It always answers, including when there was nothing to change: their own words
+  come back marked unchanged rather than a line about their sentence and no
+  sentence. `test: INV-app-121`
+- A command this app does not own is left alone. `test: INV-app-122`
+- A payload the parser refused still reaches the person who typed it.
+  `test: INV-app-123`
+- Nothing here writes to a log. `/say` carries words somebody is about to send a
+  client, so the outcome names the language rather than quoting them.
+  `test: INV-app-124`
+
+While wiring this, `refuseEnrol` turned out to have never been called: a
+malformed `/brissa` wrote a line to the terminal and left the person who typed
+it staring at nothing. Fixed in the same change — it is the hole this section
+spends four invariants avoiding.
