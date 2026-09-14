@@ -16,6 +16,7 @@ import { defaultTranslator } from '../llm/decide.ts'
 import { connectSocketMode } from '../slack/socket.ts'
 import { readCommand } from '../slack/command.ts'
 import { readEnrolCommand } from '../slack/enrol.ts'
+import { readSayCommand } from '../slack/say.ts'
 import { replyPrivately } from '../slack/shortcut.ts'
 import { createSlackHistory, whoOwns } from '../slack/history.ts'
 import { readShortcut } from '../slack/shortcut.ts'
@@ -26,7 +27,8 @@ import { createFileTokens, TokenStoreUnreadable } from '../store/tokens.ts'
 import { createMemorySeen } from '../store/seen.ts'
 import { readConfig } from './config.ts'
 import { handleCommand, refuseCommand } from './command.ts'
-import { ENROL_COMMAND, handleEnrol } from './enrol.ts'
+import { handleSay, refuseSay, SAY_COMMAND } from './say.ts'
+import { ENROL_COMMAND, handleEnrol, refuseEnrol } from './enrol.ts'
 import { completeConnection, connectUrl, disconnect, forgetIfDead, type ConnectPorts } from './connect.ts'
 import { startServer } from './server.ts'
 import { handleShortcut } from './shortcut.ts'
@@ -210,6 +212,11 @@ export async function main(): Promise<void> {
         const enrol = readEnrolCommand(payload)
         if (!enrol.ok) {
           console.log(`  /brissa refused: ${enrol.because}`)
+          // Answered, not only logged. `refuseEnrol` has existed since the
+          // command did and nothing ever called it, so `/brissa xx` wrote a
+          // line to this terminal and left the person who typed it staring at
+          // nothing — the same hole mutation testing found in `/translate`.
+          if (enrol.responseUrl !== undefined) void refuseEnrol(enrol.responseUrl, enrol.because)
           return
         }
         // `connect` and `disconnect` are about a credential, not a preference,
@@ -256,6 +263,23 @@ export async function main(): Promise<void> {
 
         void handleEnrol({ enrolment }, enrol.command).then((outcome) => {
           console.log(`  ${enrol.command.teamId}  /brissa  ${outcome.kind}`)
+        })
+        return
+      }
+
+      if (typeof (payload as { command?: unknown })?.command === 'string' &&
+          (payload as { command: string }).command === SAY_COMMAND) {
+        const say = readSayCommand(payload)
+        if (!say.ok) {
+          console.log(`  /say refused: ${say.because}`)
+          if (say.responseUrl !== undefined) void refuseSay(say.responseUrl, say.because)
+          return
+        }
+        // Nothing about the text reaches this terminal: `/say` carries words
+        // somebody is about to send a client, and the outcome names the
+        // language rather than quoting them.
+        void handleSay(work.ports, say.command).then((outcome) => {
+          console.log(`  ${say.command.teamId}  /say  ${outcome.kind}`)
         })
         return
       }

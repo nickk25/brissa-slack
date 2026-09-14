@@ -587,3 +587,41 @@ actually promise for a value it did not create.
   still go, because a credential kept because revoking it failed is the worst of
   the three outcomes. `test: INV-slack-97`
 
+
+## `/say`, and the delimiter that is load-bearing
+
+The opposite arrow from everything else in this module. `/translate` and the
+shortcut turn a message you cannot read into one you can; `/say` turns something
+you wrote into something the other side can read. Same payload shape, same rules
+about answering, and one parsing problem the others do not have.
+
+The obvious syntax is `/say de Hola qué tal` — language first, bare. It cannot
+work for a Spanish writer. `de`, `en`, `es`, `no`, `se`, `si`, `la`, `lo`, `el`,
+`te`, `su`, `mi` are all real ISO 639-1 codes *and* among the commonest words a
+Spanish sentence opens with.
+
+The dangerous case is not `/say no puedo ir`, which comes back as Norwegian and
+is visibly wrong. It is `/say de verdad que no llego`: the language reads as
+German — very likely what they meant — and the text silently becomes `verdad que
+no llego`. What comes back is fluent, plausible German of a sentence nobody
+wrote, and it is about to be pasted to a client. Nothing about it looks wrong.
+
+`command.ts` had already settled the principle for `/translate`, where a leading
+token is a count only when the whole argument is the count. This is the same
+rule met by a different road: the language must carry a shape no sentence starts
+with, and a missing one is refused rather than guessed at.
+
+- `/say de: hola` reads as the language plus the text, folding case and region
+  through the same `parseLanguage` `/brissa` uses, so the two cannot drift about
+  what `de-AT` means. Only the first colon is the delimiter; a sentence may
+  contain as many more as it likes. `test: INV-slack-98`
+- A leading two-letter word is never read as a language without the delimiter.
+  This is the invariant that stops the silent truncation above.
+  `test: INV-slack-99`
+- A language with nothing after it is refused by name, told apart from a missing
+  language: one person forgot the delimiter, the other stopped halfway, and they
+  need different sentences back. `test: INV-slack-100`
+- A payload missing what it needs is refused by name and answered wherever it
+  can be — Slack acknowledged the command before any of this ran, so a refusal
+  the caller cannot hear is a command that quietly did nothing.
+  `test: INV-slack-101`

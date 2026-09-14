@@ -80,7 +80,7 @@ type ArgumentRead =
  * name today: a code this file has never heard of is still a real language,
  * and refusing it here would refuse translations that would otherwise work.
  */
-function parseLanguage(token: string): { readonly ok: true; readonly language: Language } | { readonly ok: false } {
+export function parseLanguage(token: string): { readonly ok: true; readonly language: Language } | { readonly ok: false } {
   const primary = token.trim().toLowerCase().split('-')[0] ?? ''
   if (!/^[a-z]{2}$/.test(primary)) return { ok: false }
   return { ok: true, language: primary }

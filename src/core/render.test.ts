@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { escapeKeepingReferences, escapeMrkdwn, noticeText, renderNotice, renderTranslation } from './render.ts'
+import { escapeKeepingReferences, escapeMrkdwn, noticeText, renderNotice, renderOutbound, renderTranslation } from './render.ts'
 import type { Source } from './render.ts'
 
 const JENS: Source = { authorId: 'U-jens', text: 'Passt bei mir auch!' }
@@ -281,5 +281,45 @@ test('INV-core-30 a cut never ends inside one of Slack’s own references', () =
     assert.ok(body.length <= 3000, `over the limit at pad ${pad}`)
     const opened = body.lastIndexOf('<')
     assert.ok(opened === -1 || body.indexOf('>', opened) !== -1, `reference left open at pad ${pad}`)
+  }
+})
+
+/** The one line under a rendered answer, whichever block it turned out to be. */
+const contextText = (block: unknown): string =>
+  (block as { elements?: readonly { text?: string }[] } | undefined)?.elements?.[0]?.text ?? ''
+
+test('INV-core-31 outbound hands back the text itself, named by the language it is now in', async () => {
+  // Everything else in this file renders somebody else's message so you can
+  // read it. This renders yours so somebody else can, and what the caller
+  // needs is not a report — it is the sentence, ready to copy.
+  const blocks = renderOutbound('Hallo, können wir das Meeting verschieben?', 'de')
+  assert.deepEqual(blocks[0], {
+    type: 'section',
+    text: { type: 'mrkdwn', text: 'Hallo, können wir das Meeting verschieben?' },
+  })
+  assert.match(contextText(blocks[1]), /^German · /)
+
+  // Text that needed no change still comes back, and says why. The translator
+  // answering "this needs nothing" is correct and useless to somebody who
+  // asked for something to paste — they would be left with a line about their
+  // own sentence and no sentence.
+  const same = renderOutbound('Guten Morgen!', 'de', true)
+  assert.deepEqual(same[0], { type: 'section', text: { type: 'mrkdwn', text: 'Guten Morgen!' } })
+  assert.match(contextText(same[1]), /^Already reads as German · /)
+})
+
+test('INV-core-32 the outbound line says nothing was sent', async () => {
+  // The command is called `/say`, which reads as though it will say it. It
+  // will not — it hands you text to copy. A name that over-promises has to be
+  // corrected somewhere, and directly under the answer is the only place the
+  // correction is certain to be read.
+  //
+  // Pinned because the obvious "tidy-up" is to reuse the line under a
+  // translation — "Translated from Spanish · only visible to you" — which is
+  // true, sounds right, and drops the one fact the caller needs.
+  for (const blocks of [renderOutbound('Guten Tag', 'de'), renderOutbound('Guten Tag', 'de', true)]) {
+    const line = contextText(blocks[1])
+    assert.ok(line.includes('nothing was sent'), line)
+    assert.ok(line.includes('copy'), line)
   }
 })
