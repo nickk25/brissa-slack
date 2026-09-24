@@ -107,30 +107,81 @@ nothing had ever looked at what was actually sent.
 
 ## Calibration
 
-`npm run calibrate -- --model <id>` scores the decision — never the translation
-quality — against the answers a person wrote by hand in `fixtures/corpus`. It
-exists to turn "the cheap model is enough" into a number, by running the same
-corpus through a stronger model as the reference.
+An evaluation scores the decision — never the translation quality — against
+the answers a person wrote by hand in `fixtures/corpus`. Disagreement is the
+finding, not a failure, so a run exits zero. A case that could not be measured
+is recorded as such and never counted as agreement.
 
-Disagreement is the finding, not a failure, so the run exits zero. A case that
-could not be measured is recorded as such and never counted as agreement.
+### API spend is real usage, and nothing else
 
-**Running it spends real money, and most questions do not need it.** A full
-sweep is four model/corpus configurations at three runs per case — a few hundred
-calls on a key scoped to this project alone. That cost is the price of a
-committed measurement and it is worth paying, because the recorded score carries
-the prompt's hash and is meant to describe what actually ships.
+That is the rule, decided after a month in which roughly all of the $7.02 spent
+on the Anthropic key was testing and none of it was the product serving anybody.
+It is stricter than it needs to be for correctness, and deliberately so: a rule
+with a cost-benefit exception in it is a rule somebody argues past one run at a
+time.
 
-It is not the price of curiosity. Questions like "does this prompt work in the
-other direction" or "does that rule fire on this input" should be put to an
-agent running the same model, which costs nothing extra, and the answer treated
-as what it is: the same model in a different wrapper, adequate for a coarse
-question and a different measurement for a fine one. Say which one was run
-rather than blurring them.
+So evaluations run through **agents on the same model**, which cost nothing
+beyond the subscription already paid for:
 
-The habit was learned the expensive way: several throwaway probes went through
-the API before anybody asked why, and the key stopped working shortly after.
-Reach for `--model` and `--runs` when a partial run would answer the question,
-and before editing a prompt at all, check whether the behaviour can be had
-without one — `/say` reuses `decide.md` with `reads: [target]` and therefore
-cost nothing to build.
+```
+npm run eval:agent-job -- --corpus messages      # the cases, stripped of every hint
+# three agents answer it, each into its own file
+npm run eval:agent-record -- --job <job> run1.json run2.json run3.json
+```
+
+That satisfies `prompt-evaluated`, on every prompt change and every deploy, for
+free. `calibrate`, `eval:quality` and `smoke` still exist, and refuse to run
+without `--spend` (`tools/spend-guard.mjs`), so nobody — a person or an agent —
+spends by habit.
+
+**What the agent route does not measure**, stated because a number that
+over-claims is worse than no number. It is the same model answering the same
+prompt; it is not the same call. In production `decide.md` *is* the system
+prompt and the output is held to a schema by constrained decoding. An agent
+reads the prompt as content, writes its JSON by hand, and carries its own
+instructions and tools. For "does this translate or stay silent" the difference
+is small; at a boundary it may not be. That is why every recorded score carries
+`method`, and why `eval:check` prints it next to the number.
+
+### When a paid run is worth recommending
+
+Never automatically — not per edit, not per deploy, not for thoroughness. A paid
+run is recommended to Nick, with the reason and the rough cost, and happens only
+if he agrees. There are four reasons that justify recommending one:
+
+1. **The shape of the call changed, not the prompt.** The `output_config` schema,
+   `max_tokens`, the model string, how the system prompt is assembled in
+   `decide.ts`. This is the treacherous one: behaviour changes with no prompt
+   touched, so `prompt-evaluated` never fires, and it is precisely the thing an
+   agent cannot reproduce, because it does not decode against a schema.
+2. **An agent evaluation moved a boundary case.** A case that flipped between
+   translate and ignore compared with the previous record is where the two
+   routes are most likely to disagree. If nothing moved, nothing is owed.
+3. **Reality contradicted the evaluation.** Somebody reports a silence or a bad
+   translation on a case the agents scored as fine. That is evidence the free
+   route has drifted from the real one.
+4. **The model that ships is changing.** A new model, or pressure on cost.
+   Comparing models is the one question agents cannot answer at all.
+
+When one is approved, run the smallest thing that answers it: the model that
+ships, the corpus the question is about, `--runs` as low as the question allows.
+
+### Invariants
+
+- An agent is given the prompt and the words of each case, and nothing that gives
+  the answer away. Every other field on a corpus case is a spoiler.
+  `test: INV-llm-17`
+- A case a run did not answer, or answered with something that is not a boolean,
+  is never counted as agreement — and is reported once, not twice.
+  `test: INV-llm-18`
+- The agent route and the API route score identically, through one function, so
+  the only thing that can differ between two reports is `method`.
+  `test: INV-llm-19`
+- Nothing that spends API money runs without being told to.
+  `test: INV-llm-20`
+
+The habit behind all of this was learned the expensive way: several throwaway
+probes went through the API before anybody asked why, and four model
+configurations were calibrated when the gate asked for one. Before editing a
+prompt at all, check whether the behaviour can be had without one — `/say`
+reuses `decide.md` with `reads: [target]` and cost nothing to build.

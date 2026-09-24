@@ -45,7 +45,7 @@ if (stale.length > 0) {
     console.error(`✗ src/llm/prompts/${s.prompt}`)
     console.error(`  hash        ${s.hash}`)
     console.error(`  recorded    ${recorded.map((r) => `${r.model}@${r.promptHash}`).join(', ') || 'nothing'}`)
-    console.error(`  fix         npm run calibrate -- --model <id>, then commit fixtures/evals/`)
+    console.error(`  fix         npm run eval:agent-job, have agents answer it, npm run eval:agent-record, then commit fixtures/evals/`)
     console.error('')
   }
   process.exit(1)
@@ -56,6 +56,9 @@ for (const r of recorded) {
   // agreed, even if a third of the corpus never got an answer. The case count
   // is the part that says whether the score covers the corpus at all.
   const gap = r.measured < r.cases ? `  (${r.cases - r.measured} of ${r.cases} unmeasured)` : ''
-  console.log(`${r.model}  ${r.corpus ?? 'messages'}  prompt ${r.promptHash}  agreed ${r.agreed}/${r.measured} of ${r.cases}${gap}`)
+  // Records from before `method` existed were all produced by `calibrate.mjs`,
+  // so an absent method means the API. Printed on every line because an agent
+  // score and an API score are the same model and not the same measurement.
+  console.log(`${r.model}  ${r.corpus ?? 'messages'}  prompt ${r.promptHash}  agreed ${r.agreed}/${r.measured} of ${r.cases}${gap}  (${r.method ?? 'api'})`)
 }
 console.log(`✓ every prompt has a recorded evaluation of its current text.`)

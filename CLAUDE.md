@@ -98,6 +98,8 @@ Generated from `package.json`. Do not edit by hand.
 | `npm run calibrate` | `node --env-file-if-exists=.env tools/eval/calibrate.mjs` |
 | `npm run contracts` | `node tools/agentic/contracts.mjs` |
 | `npm run contracts:check` | `node tools/agentic/contracts.mjs --check` |
+| `npm run eval:agent-job` | `node tools/eval/agent-job.mjs` |
+| `npm run eval:agent-record` | `node tools/eval/agent-record.mjs` |
 | `npm run eval:check` | `node tools/eval/contamination.mjs && node tools/eval/check.mjs` |
 | `npm run eval:contamination` | `node tools/eval/contamination.mjs` |
 | `npm run eval:quality` | `node --experimental-strip-types --env-file-if-exists=.env tools/eval/quality.mjs` |
@@ -109,7 +111,7 @@ Generated from `package.json`. Do not edit by hand.
 | `npm run start` | `node --experimental-strip-types --env-file-if-exists=.env src/app/main.ts` |
 | `npm run state` | `node tools/agentic/state.mjs` |
 | `npm run state:snapshot` | `node tools/agentic/state.mjs snapshot` |
-| `npm run test` | `node --test 'tools/agentic/**/*.test.mjs' && node --experimental-strip-types --test 'src/**/*.test.ts'` |
+| `npm run test` | `node --test 'tools/agentic/**/*.test.mjs' 'tools/eval/**/*.test.mjs' && node --experimental-strip-types --test 'src/**/*.test.ts'` |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run verify` | `npm run typecheck && npm run contracts:check && npm run invariants && npm test && npm run gate` |
 <!-- /gen:commands -->

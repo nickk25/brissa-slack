@@ -19,6 +19,12 @@
 
 import { readFileSync } from 'node:fs'
 import { argv, env, exit } from 'node:process'
+import { requireSpendApproval } from './spend-guard.mjs'
+
+// One real message costs one real call. Worth it when somebody decides it is;
+// never by habit. The guard also removes its own flag, so the positional
+// arguments below are read exactly as they were before it existed.
+requireSpendApproval('smoke')
 
 const { handleMessage } = await import('../src/app/handle.ts')
 const { readConfig } = await import('../src/app/config.ts')
