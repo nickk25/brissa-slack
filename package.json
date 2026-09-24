@@ -12,6 +12,8 @@
     "calibrate": "node --env-file-if-exists=.env tools/eval/calibrate.mjs",
     "contracts": "node tools/agentic/contracts.mjs",
     "contracts:check": "node tools/agentic/contracts.mjs --check",
+    "eval:agent-job": "node tools/eval/agent-job.mjs",
+    "eval:agent-record": "node tools/eval/agent-record.mjs",
     "eval:check": "node tools/eval/contamination.mjs && node tools/eval/check.mjs",
     "eval:contamination": "node tools/eval/contamination.mjs",
     "eval:quality": "node --experimental-strip-types --env-file-if-exists=.env tools/eval/quality.mjs",
@@ -23,7 +25,7 @@
     "start": "node --experimental-strip-types --env-file-if-exists=.env src/app/main.ts",
     "state": "node tools/agentic/state.mjs",
     "state:snapshot": "node tools/agentic/state.mjs snapshot",
-    "test": "node --test 'tools/agentic/**/*.test.mjs' && node --experimental-strip-types --test 'src/**/*.test.ts'",
+    "test": "node --test 'tools/agentic/**/*.test.mjs' 'tools/eval/**/*.test.mjs' && node --experimental-strip-types --test 'src/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm run contracts:check && npm run invariants && npm test && npm run gate"
   },
@@ -40,6 +42,7 @@
     "tests": {
       "files": [
         "tools/agentic/**/*.test.mjs",
+        "tools/eval/**/*.test.mjs",
         "src/**/*.test.ts"
       ],
       "nodeArgs": [

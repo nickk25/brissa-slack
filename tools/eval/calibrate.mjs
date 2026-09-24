@@ -26,28 +26,16 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { requireSpendApproval } from '../spend-guard.mjs'
+import { buildPrompt, loadCorpus, score, summarise } from './scoring.mjs'
 
 const ROOT = process.cwd()
-const CORPUS_DIR = join(ROOT, 'fixtures/corpus')
-const PROMPT = join(ROOT, 'src/llm/prompts/decide.md')
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`)
   return i === -1 ? fallback : process.argv[i + 1]
-}
-
-const LANGUAGE_NAMES = { es: 'Spanish', en: 'English', de: 'German' }
-
-/** The prompt with the reader's languages filled in, and its hash. */
-function buildPrompt(reads, target) {
-  const raw = readFileSync(PROMPT, 'utf8')
-  const text = raw
-    .replaceAll('{{READS}}', reads.map((l) => LANGUAGE_NAMES[l] ?? l).join(' and '))
-    .replaceAll('{{TARGET}}', LANGUAGE_NAMES[target] ?? target)
-  return { text, hash: createHash('sha256').update(raw).digest('hex').slice(0, 12) }
 }
 
 /**
@@ -98,6 +86,11 @@ async function once(client, model, system, message) {
 }
 
 async function main() {
+  // Every call below is billed. The default route for an evaluation is agents
+  // on the same model (`npm run eval:agent-job`), and this one runs only when a
+  // paid measurement of the real call path has been approved for a reason.
+  requireSpendApproval('calibrate')
+
   const model = arg('model', 'claude-sonnet-5')
   // Which set. `messages` is the one a prompt may be tuned against; `held-out`
   // is the one that only means anything because nobody looked at it while
@@ -106,11 +99,11 @@ async function main() {
   const corpusName = arg('corpus', 'messages')
   const runs = Number(arg('runs', '3'))
   const out = arg('out', `fixtures/evals/${corpusName === 'messages' ? model : `${corpusName}-${model}`}.json`)
-  const corpus = JSON.parse(readFileSync(join(CORPUS_DIR, `${corpusName}.json`), 'utf8'))
+  const corpus = loadCorpus(corpusName)
   const { text: system, hash: promptHash } = buildPrompt(corpus.reads, corpus.reads[0])
 
   const client = new Anthropic()
-  const results = []
+  const perCase = new Map()
 
   for (const c of corpus.cases) {
     const answers = []
@@ -125,56 +118,28 @@ async function main() {
         errors.push(String(err?.message ?? err))
       }
     }
+    perCase.set(c.id, { answers, errors })
     const distinct = [...new Set(answers)]
-    const stable = distinct.length === 1
-    const agreed = stable && answers.length === runs && distinct[0] === c.expected
-    results.push({
-      id: c.id,
-      expected: c.expected,
-      answers,
-      stable,
-      agreed,
-      errors,
-      categories: c.categories,
-    })
-    process.stdout.write(agreed ? '.' : errors.length ? 'E' : stable ? 'x' : '~')
+    const agreed = distinct.length === 1 && answers.length === runs && distinct[0] === c.expected
+    process.stdout.write(agreed ? '.' : errors.length ? 'E' : distinct.length === 1 ? 'x' : '~')
   }
   process.stdout.write('\n')
 
-  const measured = results.filter((r) => r.answers.length === runs)
-  const disagreed = measured.filter((r) => !r.agreed)
-  const flaky = measured.filter((r) => !r.stable)
   const report = {
     model,
     corpus: corpusName,
     promptHash,
+    // The real call path: this prompt as the system prompt, constrained to the
+    // schema production uses. Told apart from `agent` on purpose — the two are
+    // the same model and not the same measurement.
+    method: 'api',
     ranAt: new Date().toISOString(),
-    runs,
-    cases: corpus.cases.length,
-    measured: measured.length,
-    // Right every time, not right on average. A case the model gets right twice
-    // out of three is not a case it gets right.
-    agreed: measured.filter((r) => r.agreed).length,
-    flaky: flaky.map((r) => ({ id: r.id, answers: r.answers })),
-    // Reported separately, because they are different mistakes with different
-    // costs: a false silence means the reader misses something they needed, a
-    // false translation is noise in a channel they share with a client.
-    missedTranslations: disagreed.filter((r) => r.stable && r.expected === 'translate').map((r) => r.id),
-    needlessTranslations: disagreed.filter((r) => r.stable && r.expected === 'ignore').map((r) => r.id),
-    errors: results.filter((r) => r.errors.length).map((r) => ({ id: r.id, errors: r.errors })),
-    results,
+    ...score(corpus, perCase, runs),
   }
 
   mkdirSync(dirname(join(ROOT, out)), { recursive: true })
   writeFileSync(join(ROOT, out), `${JSON.stringify(report, null, 2)}\n`)
-
-  console.log(`${model}  ${corpusName}  prompt ${promptHash}  ${runs} runs per case`)
-  console.log(`  agreed every time ${report.agreed}/${report.measured}`)
-  console.log(`  flaky             ${report.flaky.map((f) => f.id).join(', ') || 'none'}`)
-  console.log(`  missed            ${report.missedTranslations.join(', ') || 'none'}`)
-  console.log(`  needless          ${report.needlessTranslations.join(', ') || 'none'}`)
-  if (report.errors.length) console.log(`  could not measure ${report.errors.length}`)
-  console.log(`  written to        ${out}`)
+  console.log(summarise(report, out))
 
   // Disagreement is the finding, not a failure: this run exists to produce a
   // number, and exiting non-zero would make it look like a broken tool.

@@ -322,3 +322,39 @@ actually needed sent. `/say de: Gracias` comes back silent today; that is handle
 by returning the original marked unchanged rather than by weakening restraint for
 everybody. By the time it is a problem there will be a corpus of real `/say`
 inputs to measure a dedicated prompt against, which there is not now.
+
+## API spend is real usage only; evaluations run on agents
+
+**Decided 24 September 2026, by Nick.** Every Anthropic API call must be a real
+person being served. Evaluations, probes and smoke runs go through agents on the
+same model. `calibrate`, `eval:quality` and `smoke` refuse without `--spend`,
+and a paid run is only ever recommended — for the four reasons in
+`src/llm/CLAUDE.md` — never run on anybody's initiative, per edit or per deploy.
+
+**What prompted it.** The console after one month: $7.02 spent, and from 10
+September onward a flat line at zero. Essentially all of it was testing — four
+model configurations calibrated where the gate asked for one, plus probes that
+an agent would have answered — and none of it was the product serving anybody.
+
+**The objection, recorded so it is not relitigated.** An agent is not the same
+measurement as the production call: `decide.md` is content rather than the
+system prompt, and there is no constrained decoding. That was put to Nick, and
+he chose zero spend knowing it. The cost is stated on every score as `method`.
+
+**How close the free route is, measured rather than assumed.** Three agents on
+the same prompt (`1f0e622716bf`) against the API record already on file for it:
+
+|  | agreed | flaky | missed | needless |
+|---|---|---|---|---|
+| API (`calibrate`) | 28/28 | none | none | none |
+| agents | 27/28 | `c-011` | none | none |
+
+27 of 28 cases answered identically in every run. The one that moved is `c-011`,
+*"ProveedorZ auch :wink:"*, which the corpus labels "a deliberate borderline
+case: it measures whether the system is noisy" — the agent route said `ignore`
+once in three. So the free route tracks the real one, is slightly noisier exactly
+where the corpus predicts noise, and flags it as flaky rather than hiding it.
+The miss it produced was a false silence, which is the more expensive direction.
+
+**No paid run was owed by this.** The prompt did not change; the API result for
+it already existed. This measured the method, not the prompt.

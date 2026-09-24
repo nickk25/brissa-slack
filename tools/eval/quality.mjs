@@ -59,6 +59,7 @@
  * `src/core/ask.ts`'s `hasNothingToRead`, reused rather than re-stripped.
  */
 
+import { requireSpendApproval } from '../spend-guard.mjs'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -255,6 +256,9 @@ export async function runCase(c, translator, reads, runs, hasNothingToRead) {
  * ------------------------------------------------------------------------ */
 
 async function main() {
+  // Billed per case. Reading translations side by side is testing, and testing
+  // is not what the API budget is for — see `tools/spend-guard.mjs`.
+  requireSpendApproval('eval:quality')
   const model = arg('model', 'claude-sonnet-5')
   // Which set. Same rule as `calibrate.mjs`: `messages` may be tuned against;
   // `held-out` may be run but never read case-by-case to change anything.
