@@ -63,10 +63,10 @@ export async function refuseSay(
 ): Promise<void> {
   const text =
     because === 'no-language'
-      ? 'Say which language, with a colon: `/say de: Hola, ¿podemos mover la reunión?` — without it Brissa cannot tell the language from the first word of your sentence.'
+      ? 'Say which language, with a colon: `/say de: Can we move the meeting to Tuesday?` — without it Brissa cannot tell the language from the first word of your sentence.'
       : because === 'no-text'
-        ? 'That was a language with nothing after it. Try `/say de: Hola, ¿podemos mover la reunión?`'
-        : `That command could not be read: ${because}. Try \`/say de: Hola, ¿podemos mover la reunión?\``
+        ? 'That was a language with nothing after it. Try `/say de: Can we move the meeting to Tuesday?`'
+        : `That command could not be read: ${because}. Try \`/say de: Can we move the meeting to Tuesday?\``
   await send(responseUrl, { blocks: line(text), text })
 }
 

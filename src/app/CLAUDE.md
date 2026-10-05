@@ -711,6 +711,8 @@ lie and `renderOutbound`'s line the correction.
 - A command this app does not own is left alone. `test: INV-app-122`
 - A payload the parser refused still reaches the person who typed it.
   `test: INV-app-123`
+  The example it shows is the same one Slack's usage hint and the About page
+  use, so a person sees one form of the command everywhere they meet it.
 - Nothing here writes to a log. `/say` carries words somebody is about to send a
   client, so the outcome names the language rather than quoting them.
   `test: INV-app-124`

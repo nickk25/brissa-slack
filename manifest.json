@@ -2,8 +2,8 @@
   "display_information": {
     "name": "Brissa",
     "description": "Reads the messages you cannot, privately.",
-    "long_description": "Brissa translates the messages you cannot read, privately and in place. It stays silent unless a message contains a language you do not read, and when it speaks, only you see it. The original is never edited and nobody else is told.",
-    "background_color": "#1d1c1d"
+    "long_description": "Brissa translates messages written in languages you don't read, privately and in place. Only you see the translation. The original is never edited and nobody else is told.\n\nGET STARTED\n\n1. Tell Brissa which languages you read. Type /brissa es en, listing the languages you already read, most preferred first. Everything else will be translated for you.\n\n2. Translate a message. Hover over any message, open More actions (⋯) and choose Translate for me. This works in every channel, including channels shared with other organizations.\n\n3. Write in another language. Type /say de: your text, using the code of the language you need. Brissa shows you the translation to copy; nothing is sent.\n\n4. Optional: translate recent messages. Run /brissa connect once and approve the request in Slack. After that, /translate 5 translates the last five messages in a channel.\n\n/brissa shows your current languages, /brissa off stops translations, and /brissa disconnect removes your authorization.",
+    "background_color": "#173663"
   },
   "features": {
     "bot_user": {
@@ -30,7 +30,7 @@
       {
         "command": "/say",
         "description": "Write something in another language. Only you see the answer; nothing is sent.",
-        "usage_hint": "de: Hola, ¿podemos mover la reunión?",
+        "usage_hint": "de: Can we move the meeting to Tuesday?",
         "should_escape": false
       }
     ]
@@ -51,7 +51,10 @@
         "im:history",
         "mpim:history"
       ]
-    }
+    },
+    "redirect_urls": [
+      "https://brissa.fly.dev/oauth/callback"
+    ]
   },
   "settings": {
     "event_subscriptions": {
@@ -67,6 +70,7 @@
     },
     "socket_mode_enabled": true,
     "org_deploy_enabled": false,
-    "token_rotation_enabled": false
+    "token_rotation_enabled": false,
+    "is_mcp_enabled": false
   }
 }
