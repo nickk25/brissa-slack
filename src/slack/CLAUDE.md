@@ -243,9 +243,18 @@ a revoked app token does not reconnect in a tight loop forever.
 - The envelope is acknowledged before it is handed on. `test: INV-slack-40`
 - A frame with nothing to act on is acknowledged to nobody; acknowledging one we
   did not understand would tell Slack it was handled. `test: INV-slack-41`
-- A closed connection is reopened, because Slack closes them routinely — it sends
-  `disconnect` before its own deploys, and treating that as a failure would mean
-  Brissa stops working every time Slack ships. `test: INV-slack-42`
+- A connection that drops on its own is reopened. Sockets drop for reasons
+  nobody announces, and a dropped connection with nothing reopening it is a
+  process that looks alive and receives nothing. `test: INV-slack-42`
+- When Slack asks for a reconnect, the replacement opens before the old
+  connection closes. Slack renews connections on its own schedule and announces
+  it with a `disconnect` frame; Brissa opens the replacement at once, keeps the
+  old connection delivering until the replacement says hello, and only then
+  closes it. Slack allows several connections at a time, so there is never a
+  moment with none. Closing first and reopening once the close completed left a
+  ten-second window in production, and a slash command typed in it got Slack's
+  "the app did not respond". The old connection's close is the handover
+  finishing, so it schedules nothing. `test: INV-slack-102`
 - Closing on purpose stays closed. The difference between "Slack dropped us" and
   "we are shutting down"; a reconnect loop ignoring the second keeps a process
   alive forever. `test: INV-slack-43`

@@ -154,6 +154,10 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
   let socket: Socket | undefined
   let attempt = 0
   let pending: ReturnType<typeof setTimeout> | undefined
+  // Connections Slack has asked us to replace. Each stays open until its
+  // replacement says hello, and its eventual close is expected — it must not
+  // schedule yet another connection, because the replacement is already there.
+  const retiring = new Set<Socket>()
 
   const reconnect = () => {
     if (stopped) return
@@ -183,6 +187,9 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
       reconnect()
       return
     }
+    // Closed on purpose while the URL was being issued: opening a socket now
+    // would hold the process open after somebody asked it to stop.
+    if (stopped) return
 
     const ws = open(url)
     socket = ws
@@ -193,11 +200,23 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
       if (frame.kind === 'hello') {
         attempt = 0
         say('connected')
+        // The replacement is live, so the connection it replaces can go now
+        // and not a moment earlier.
+        for (const old of retiring) if (old !== ws) old.close()
         return
       }
       if (frame.kind === 'disconnect') {
-        say(`Slack asked us to reconnect (${frame.reason})`)
-        ws.close()
+        // Slack renews connections on its own schedule and says so first. The
+        // replacement is opened now, while this one is still delivering, and
+        // this one is closed only once the replacement says hello. Slack allows
+        // several connections at once, so there is no moment with none.
+        //
+        // It used to close first and reconnect when the close completed. In
+        // production that close took ten seconds, and a slash command typed in
+        // those ten seconds got Slack's "the app did not respond".
+        say(`Slack asked us to reconnect (${frame.reason}); opening the replacement first`)
+        retiring.add(ws)
+        void start()
         return
       }
       if (frame.kind !== 'event' && frame.kind !== 'interactive' && frame.kind !== 'command') return
@@ -213,6 +232,8 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
     })
 
     ws.addEventListener('close', () => {
+      // A retired connection closing is the handover finishing, not a failure.
+      if (retiring.delete(ws)) return
       if (socket === ws) reconnect()
     })
     ws.addEventListener('error', () => {
@@ -231,6 +252,8 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
       pending = undefined
       socket?.close()
       socket = undefined
+      for (const old of retiring) old.close()
+      retiring.clear()
     },
   }
 }

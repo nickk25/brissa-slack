@@ -126,9 +126,10 @@ function fakeSocket() {
 
 const issuing = (body: unknown): typeof fetch => (async () => ({ json: async () => body })) as unknown as typeof fetch
 
-test('INV-slack-42 a closed connection is reopened, because Slack closes them routinely', async () => {
-  // Slack sends `disconnect` before its own deploys. Treating that as a failure
-  // would mean Brissa stops working every time Slack ships.
+test('INV-slack-42 a connection that drops on its own is reopened', async () => {
+  // Sockets drop for reasons nobody announces: a network blip, a Slack restart.
+  // A dropped connection with nothing reopening it is a process that looks
+  // alive and receives nothing.
   const first = fakeSocket()
   const second = fakeSocket()
   const opened: string[] = []
@@ -146,10 +147,6 @@ test('INV-slack-42 a closed connection is reopened, because Slack closes them ro
 
   await new Promise((r) => setTimeout(r, 0))
   assert.deepEqual(opened, ['wss://example.test'])
-
-  // Slack asks us to go away; we close, which triggers the reopen.
-  first.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"link_disabled"}' })
-  assert.equal(first.closed(), 1)
 
   first.listeners.get('close')?.({ data: '' })
   await new Promise((r) => setTimeout(r, 1200))
@@ -336,4 +333,49 @@ test('INV-slack-70 a connection waiting to reopen keeps the process alive', asyn
   child.kill()
 
   assert.equal(outcome, 'alive', 'the process exited while a reconnect was pending')
+})
+
+test('INV-slack-102 when Slack asks for a reconnect, the replacement opens before the old connection closes', async () => {
+  // Slack renews connections on its own schedule and announces it with a
+  // `disconnect` frame. Closing first and reopening once the close completed
+  // left a window with no connection at all — ten seconds of it in production,
+  // during which a slash command got Slack's "the app did not respond".
+  //
+  // So: the replacement is opened at once, the old connection keeps delivering
+  // until the replacement says hello, and only then is it closed.
+  const old = fakeSocket()
+  const replacement = fakeSocket()
+  const opened: Socket[] = []
+  const pool = [old, replacement]
+
+  const connection = connectSocketMode({
+    appToken: 'xapp-x',
+    fetchImpl: issuing({ ok: true, url: 'wss://example.test' }),
+    open: () => {
+      const next = pool[opened.length] ?? fakeSocket()
+      opened.push(next.socket)
+      return next.socket
+    },
+    onEnvelope: () => {},
+  })
+
+  await new Promise((r) => setTimeout(r, 0))
+  old.listeners.get('message')?.({ data: '{"type":"hello"}' })
+
+  old.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"warning"}' })
+  await new Promise((r) => setTimeout(r, 0))
+
+  assert.equal(opened.length, 2, 'the replacement is opened straight away, with no backoff')
+  assert.equal(old.closed(), 0, 'and the old connection is still open while it connects')
+
+  replacement.listeners.get('message')?.({ data: '{"type":"hello"}' })
+  assert.equal(old.closed(), 1, 'the old connection closes once the replacement is live')
+
+  // The old connection's close is the handover finishing, not a failure: it
+  // must not schedule a third connection.
+  old.listeners.get('close')?.({ data: '' })
+  await new Promise((r) => setTimeout(r, 1200))
+  assert.equal(opened.length, 2)
+
+  connection.close()
 })
