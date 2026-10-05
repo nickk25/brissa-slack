@@ -84,11 +84,10 @@ const SLACK_ENTITY = /&lt;((?:@|#|!)[A-Za-z0-9_^|-]*|https?:\/\/[^\s|]+(?:\|[^&]
  * reader could not have guessed — and it is information Slack renders for free,
  * from an id that means nothing to a person.
  *
- * The quote above the translation is escaped **without** this, and the asymmetry
- * is the point: the original is somebody else's text arriving as evidence of
- * what was said, and a mention inside it must not become a live reference. The
- * translation is Brissa's own sentence about that text, and there a reference is
- * what the reader needs.
+ * The quote above the translation goes through the same function, so the two
+ * halves of one reply never disagree about who was named. Every reply is
+ * ephemeral, so a live reference is seen by the reader alone and notifies
+ * nobody.
  *
  * Escaping first and selectively restoring second, rather than matching the raw
  * text, so anything that merely looks like an entity has already been made inert
@@ -130,14 +129,29 @@ const QUOTE_LIMIT = 80
 /**
  * The original, collapsed to one line and cut to a glance.
  *
- * Escaped, which matters more here than anywhere else in this file: the original
- * is the one string in the product written by somebody else. A mention inside it
- * would otherwise render as a mention — and the whole point of the quote is that
- * it is evidence of what was said, not a re-broadcast of it.
+ * Escaped the way the translation is: the original is the one string in the
+ * product written by somebody else, so anything in it that only looks like
+ * markup stays inert, while Slack's own references render. A reader recognises a
+ * message by who it was addressed to, and a raw `<@U0APEL2PG2C>` tells them
+ * nothing; every reply is ephemeral, so a live mention here is seen by the reader
+ * alone and notifies nobody.
+ *
+ * The cut never leaves half a reference. Half a mention is an unreadable id, so it
+ * goes entirely. Half a link is different: a link can be long enough to fill the
+ * whole quote, and dropping it would leave only an ellipsis. Its beginning stays,
+ * made inert, so the reader still has something to recognise.
  */
 function quote(text: string): string {
-  const oneLine = escapeMrkdwn(text.replace(/\s+/g, ' ').trim())
-  return oneLine.length <= QUOTE_LIMIT ? oneLine : `${oneLine.slice(0, QUOTE_LIMIT - 1).trimEnd()}…`
+  const oneLine = escapeKeepingReferences(text.replace(/\s+/g, ' ').trim())
+  if (oneLine.length <= QUOTE_LIMIT) return oneLine
+
+  const cut = oneLine.slice(0, QUOTE_LIMIT - 1)
+  const opened = cut.lastIndexOf('<')
+  const half = opened !== -1 && cut.indexOf('>', opened) === -1
+  if (half && cut.startsWith('<http', opened)) {
+    return `${cut.slice(0, opened)}&lt;${cut.slice(opened + 1).trimEnd()}…`
+  }
+  return `${withoutAHalfReference(cut).trimEnd()}…`
 }
 
 /**

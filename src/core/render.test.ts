@@ -105,18 +105,21 @@ test('INV-core-19 a long original is a glance, not a second copy of the message'
   assert.ok(!quoted.includes('nach hinten'))
 })
 
-test('INV-core-20 the quoted original cannot mention anybody', () => {
-  // The original is the one string here written by somebody else. A mention
-  // inside it must arrive as evidence of what was said, never as a re-broadcast
-  // — while the author's own mention, which this module builds, stays live.
+test('INV-core-20 a mention in the quoted original shows as the person it names', () => {
+  // A reader recognises a message by who it was addressed to, and the raw id
+  // `<@U0APEL2PG2C>` tells them nothing. Everything Brissa sends is ephemeral,
+  // so a live mention in the quote is seen by the reader alone and notifies
+  // nobody — exactly as in the translation underneath it.
   const blocks = renderTranslation(
     { text: 'Hecho.', foundLanguages: ['de'] },
-    { authorId: 'U-jens', text: 'Fertig <@U-ana>, danke!' },
+    { authorId: 'U-jens', text: 'Fertig <@U-ana>, danke! <b>nicht fett</b>' },
   )
   const s = section(blocks)
   assert.ok(s?.type === 'section')
-  assert.ok(s.text.text.includes('&lt;@U-ana&gt;'))
-  assert.ok(s.text.text.startsWith('> <@U-jens>: '))
+  assert.ok(s.text.text.startsWith('> <@U-jens>: '), 'the author still comes first')
+  assert.ok(s.text.text.includes('Fertig <@U-ana>,'), 'the mention stays a mention')
+  // Text that only looks like markup is still inert.
+  assert.ok(s.text.text.includes('&lt;b&gt;nicht fett&lt;/b&gt;'))
 })
 
 test('INV-core-21 a multi-line original is quoted as one line', () => {
@@ -196,12 +199,11 @@ test('INV-core-25 a translation with no source to point at carries no anchor', (
   assert.equal(blocks.length, 2)
 })
 
-test('INV-core-26 a reference in the translation stays a reference, and everything else stays inert', () => {
-  // The asymmetry with the quote above it is the point. The original arrives as
-  // evidence of what somebody said, so a mention inside it must not become live.
-  // The translation is Brissa's own sentence about that text, and there the
-  // mention is the only part of it the reader could not have guessed — an id
-  // that means nothing to a person, which Slack renders as a name for free.
+test('INV-core-26 a reference stays a reference, and everything else stays inert', () => {
+  // In the translation a mention is the part the reader could not have guessed
+  // — an id that means nothing to a person, which Slack renders as a name for
+  // free. The quote above it follows the same rule (INV-core-20), so the two
+  // halves of one message never disagree about who was named.
   const blocks = renderTranslation(
     { text: '<@U-ana> está de vacaciones. Usa <b> con cuidado.', foundLanguages: ['de'] },
     { authorId: 'U-jens', text: '<@U-ana> hat Urlaub. Nutze <b> vorsichtig.' },
@@ -210,13 +212,13 @@ test('INV-core-26 a reference in the translation stays a reference, and everythi
   assert.ok(s?.type === 'section')
   const [quoted, translated] = s.text.text.split('\n')
 
-  // Live in the translation…
+  // A mention in both halves of the same message.
   assert.ok(translated?.includes('<@U-ana>'))
-  // …and inert in the quote, in the same message.
-  assert.ok(quoted?.includes('&lt;@U-ana&gt;'))
+  assert.ok(quoted?.includes('<@U-ana>'))
 
-  // Anything that is not one of Slack's own references is still escaped.
+  // Anything that is not one of Slack's own references is still escaped, in both.
   assert.ok(translated?.includes('&lt;b&gt;'))
+  assert.ok(quoted?.includes('&lt;b&gt;'))
 })
 
 test('INV-core-28 a translation too long for one Slack block is truncated, not dropped, and says so', () => {
@@ -322,4 +324,31 @@ test('INV-core-32 the outbound line says nothing was sent', async () => {
     assert.ok(line.includes('nothing was sent'), line)
     assert.ok(line.includes('copy'), line)
   }
+})
+
+test('INV-core-33 the quote is never cut through the middle of a mention', () => {
+  // The quote stops at a fixed length. A mention straddling that point would
+  // leave half of one behind — neither a name nor readable, and a stray `<`
+  // that Slack may treat as the start of markup.
+  const long = `${'a'.repeat(70)} <@U0APEL2PG2C> wie sieht es bei euch aus`
+  const blocks = renderTranslation({ text: 'x', foundLanguages: ['de'] }, { authorId: 'U-jens', text: long })
+  const s = section(blocks)
+  assert.ok(s?.type === 'section')
+  const quoted = s.text.text.split('\n')[0]?.replace('> <@U-jens>: ', '') ?? ''
+  assert.ok(quoted.endsWith('…'), quoted)
+  assert.equal((quoted.match(/</g) ?? []).length, (quoted.match(/>/g) ?? []).length, 'every < is closed')
+})
+
+test('INV-core-34 a quote cut inside a long link keeps the start of the link, inert', () => {
+  // Shared documents arrive as links longer than the quote itself. Dropping a
+  // half link the way a half mention is dropped would leave the reader with an
+  // ellipsis and nothing to recognise the message by.
+  const link = 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit'
+  const blocks = renderTranslation({ text: 'x', foundLanguages: ['de'] }, { authorId: 'U-jens', text: `<${link}> bitte prüfen` })
+  const s = section(blocks)
+  assert.ok(s?.type === 'section')
+  const quoted = s.text.text.split('\n')[0]?.replace('> <@U-jens>: ', '') ?? ''
+  assert.ok(quoted.startsWith('&lt;https://docs.google.com/spreadsheets'), quoted)
+  assert.ok(quoted.endsWith('…'))
+  assert.ok(!quoted.includes('<'), 'nothing in it is live markup')
 })

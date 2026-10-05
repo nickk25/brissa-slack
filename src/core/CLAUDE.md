@@ -67,9 +67,16 @@ that answered it in advance was a contract stating something false.
 - Two foreign messages in a row stay told apart. `test: INV-core-18`
 - A long original is a glance rather than a second copy of the message.
   `test: INV-core-19`
-- The quoted original cannot mention anybody: it arrives as evidence of what was
-  said, never as a re-broadcast — while the author's own mention, which this
-  module builds, stays live. `test: INV-core-20`
+- A mention in the quoted original shows as the person it names. A reader
+  recognises a message by who it was addressed to, and a raw id such as
+  `<@U0APEL2PG2C>` tells them nothing. Everything Brissa sends is ephemeral, so a
+  live mention in the quote is seen by the reader alone and notifies nobody;
+  text that only looks like markup stays inert. `test: INV-core-20`
+- The quote is never cut through the middle of a mention. Half of one is neither
+  a name nor readable, so it goes entirely. `test: INV-core-33`
+- A quote cut inside a long link keeps the start of the link, inert. A shared
+  document's link can be longer than the whole quote, and dropping it the way a
+  half mention is dropped would leave only an ellipsis. `test: INV-core-34`
 - A multi-line original is quoted as one line. Slack's `>` quotes to the end of
   the line, so a newline inside would put the rest of the original outside the
   quote bar, where it reads as the translation. `test: INV-core-21`
@@ -85,12 +92,11 @@ that answered it in advance was a contract stating something false.
   it translates; text somebody just typed into a slash command has no such
   problem, and quoting it back under their own name is the app repeating what
   they said a second ago. `test: INV-core-25`
-- A reference in the translation stays a reference, and everything else stays
-  inert. The asymmetry with the quote above it is the point: the original arrives
-  as evidence of what somebody said and must not become live, while the
-  translation is Brissa's own sentence, where a mention is the only part the
-  reader could not have guessed — an id that means nothing to a person, which
-  Slack renders as a name for free. `test: INV-core-26`
+- A reference stays a reference, and everything else stays inert, in the quote
+  and the translation alike. A mention is the one part the reader could not have
+  guessed — an id that means nothing to a person, which Slack renders as a name
+  for free — and the two halves of one message never disagree about who was
+  named. `test: INV-core-26`
 - Only Slack's own reference syntax survives escaping. A loose pattern would hand
   back exactly what escaping exists to prevent. `test: INV-core-27`
 - Every notice is one line, and none of them apologises. Notices exist only
@@ -153,9 +159,11 @@ person's current display name, which is why Brissa asks for no `users:read`
 scope, keeps no directory, and can never show a name that went stale. A
 permission not requested is a permission that cannot leak.
 
-The quote is **escaped and the mention is not**. The original is the one string
-in this product written by somebody else, and a mention inside it must arrive as
-evidence of what was said rather than as a re-broadcast of it.
+The quote is **escaped, and Slack's own references survive it** — the same
+rule as the translation. The original is the one string in this product written
+by somebody else, so anything in it that only looks like markup stays inert. A
+mention is different: it is the clue that tells a reader which message this is,
+and because every reply is ephemeral, rendering it live notifies nobody.
 
 The quote is **cut to a glance**, and collapsed to one line. It is there to be
 recognised, not read: repeating the whole message above its own translation
