@@ -266,6 +266,11 @@ a revoked app token does not reconnect in a tight loop forever.
   `link_disabled` means Socket Mode was switched off, and an unknown reason is
   not a renewal either; opening a replacement at once there could loop at API
   speed. `test: INV-slack-105`
+- A connection being replaced is never closed by Brissa before a replacement is
+  live. If the replacement cannot open, the old connection is the only one there
+  is, and closing it on a timer would trade a working connection for none; it
+  stays until Slack closes it. The safety net is armed by the replacement's
+  hello, never by the renewal notice. `test: INV-slack-106`
 - Closing on purpose stays closed. The difference between "Slack dropped us" and
   "we are shutting down"; a reconnect loop ignoring the second keeps a process
   alive forever. `test: INV-slack-43`

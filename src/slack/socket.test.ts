@@ -349,7 +349,7 @@ function pool(count: number) {
 
 const tick = () => new Promise((r) => setTimeout(r, 0))
 
-test('INV-slack-102 when Slack renews the connection, the replacement opens before the old one is let go', async () => {
+test('INV-slack-102 when Slack renews the connection, the replacement opens before the old one is let go', async (t) => {
   // Slack renews connections on its own schedule, sending `warning` and then
   // `refresh_requested`, and closes the old connection itself. Closing first
   // and reopening once the close completed left a window with no connection —
@@ -365,6 +365,7 @@ test('INV-slack-102 when Slack renews the connection, the replacement opens befo
     retireAfterMs: 50,
     onEnvelope: () => {},
   })
+  t.after(() => connection.close())
 
   await tick()
   old?.listeners.get('message')?.({ data: '{"type":"hello"}' })
@@ -388,7 +389,7 @@ test('INV-slack-102 when Slack renews the connection, the replacement opens befo
   connection.close()
 })
 
-test('INV-slack-103 a second renewal notice on a connection already being replaced opens nothing more', async () => {
+test('INV-slack-103 a second renewal notice on a connection already being replaced opens nothing more', async (t) => {
   // Slack's sequence on one connection is `warning`, then `refresh_requested`
   // about ten seconds later. If the replacement has not said hello by then, a
   // second replacement would open and be tracked by nothing — never closed on
@@ -401,6 +402,7 @@ test('INV-slack-103 a second renewal notice on a connection already being replac
     open: p.open,
     onEnvelope: () => {},
   })
+  t.after(() => connection.close())
 
   await tick()
   old?.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"warning"}' })
@@ -414,7 +416,7 @@ test('INV-slack-103 a second renewal notice on a connection already being replac
   for (const f of p.opened) assert.ok(f.closed() >= 1, 'no connection outlives close()')
 })
 
-test('INV-slack-104 a replaced connection that closes before its replacement is open schedules no second connection', async () => {
+test('INV-slack-104 a replaced connection that closes before its replacement is open schedules no second connection', async (t) => {
   // The case that needs the guard: Slack closes the old connection while the
   // replacement's URL is still being issued. Without it, the close would start
   // a reconnect on top of the open already in flight.
@@ -435,6 +437,7 @@ test('INV-slack-104 a replaced connection that closes before its replacement is 
     onStatus: (status) => said.push(status),
     onEnvelope: () => {},
   })
+  t.after(() => connection.close())
 
   await tick()
   old?.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"refresh_requested"}' })
@@ -460,6 +463,7 @@ test('INV-slack-104 a replaced connection that closes before its replacement is 
     open: () => { lateOpens++; return fakeSocket().socket },
     onEnvelope: () => {},
   })
+  t.after(() => late.close())
   late.close()
   releaseLate(undefined)
   await tick()
@@ -467,7 +471,7 @@ test('INV-slack-104 a replaced connection that closes before its replacement is 
   assert.equal(lateOpens, 0)
 })
 
-test('INV-slack-105 a disconnect that is not a scheduled renewal closes and backs off', async () => {
+test('INV-slack-105 a disconnect that is not a scheduled renewal closes and backs off', async (t) => {
   // `link_disabled` means Socket Mode was switched off, and a reason this does
   // not know is not a renewal either. Opening a replacement at once there could
   // loop at API speed; closing and reconnecting with backoff cannot.
@@ -481,6 +485,7 @@ test('INV-slack-105 a disconnect that is not a scheduled renewal closes and back
     onStatus: (status) => said.push(status),
     onEnvelope: () => {},
   })
+  t.after(() => connection.close())
 
   await tick()
   old?.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"link_disabled"}' })
@@ -490,5 +495,34 @@ test('INV-slack-105 a disconnect that is not a scheduled renewal closes and back
 
   old?.listeners.get('close')?.({ data: '' })
   assert.ok(said.some((s) => s.startsWith('reconnecting in')), 'it reconnects through the backoff')
+  connection.close()
+})
+
+test('INV-slack-106 a connection being replaced is never closed by Brissa before a replacement is live', async (t) => {
+  // If the replacement cannot open — `apps.connections.open` failing, say — the
+  // old connection is the only one there is. Closing it on a timer would trade a
+  // working connection for none. It stays until Slack closes it.
+  let calls = 0
+  const p = pool(2)
+  const [old] = p.fakes
+  const connection = connectSocketMode({
+    appToken: 'xapp-x',
+    fetchImpl: (async () => {
+      calls++
+      if (calls === 1) return { json: async () => ({ ok: true, url: 'wss://example.test' }) }
+      return { json: async () => ({ ok: false, error: 'internal_error' }) }
+    }) as unknown as typeof fetch,
+    open: p.open,
+    retireAfterMs: 20,
+    onEnvelope: () => {},
+  })
+  t.after(() => connection.close())
+
+  await tick()
+  old?.listeners.get('message')?.({ data: '{"type":"hello"}' })
+  old?.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"warning"}' })
+  await new Promise((r) => setTimeout(r, 120))
+
+  assert.equal(old?.closed(), 0, 'the only working connection stays open')
   connection.close()
 })

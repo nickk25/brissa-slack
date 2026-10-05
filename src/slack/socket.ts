@@ -160,9 +160,10 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
   let socket: Socket | undefined
   let attempt = 0
   let pending: ReturnType<typeof setTimeout> | undefined
-  // Connections Slack has asked us to replace. Each stays open until its
-  // replacement says hello, and its eventual close is expected — it must not
-  // schedule yet another connection, because the replacement is already there.
+  // Connections Slack has asked us to replace. Each is left open for Slack to
+  // close, with a safety net armed once its replacement says hello. Its close is
+  // expected and must not schedule yet another connection, because the
+  // replacement is already there.
   const retiring = new Set<Socket>()
   const retireTimers = new Map<Socket, ReturnType<typeof setTimeout>>()
   const retireAfterMs = options.retireAfterMs ?? 30_000
@@ -220,9 +221,10 @@ export function connectSocketMode(options: SocketModeOptions): Connection {
       }
       if (frame.kind === 'disconnect') {
         // Slack renews connections on its own schedule and says so first. The
-        // replacement is opened now, while this one is still delivering, and
-        // this one is closed only once the replacement says hello. Slack allows
-        // several connections at once, so there is no moment with none.
+        // replacement is opened now, while this one is still delivering; this
+        // one is left for Slack to close, and Brissa never closes it before a
+        // replacement has said hello. Slack allows several connections at once,
+        // so there is no moment with none.
         //
         // It used to close first and reconnect when the close completed. In
         // production that close took ten seconds, and a slash command typed in
