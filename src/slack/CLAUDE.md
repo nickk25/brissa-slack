@@ -246,15 +246,26 @@ a revoked app token does not reconnect in a tight loop forever.
 - A connection that drops on its own is reopened. Sockets drop for reasons
   nobody announces, and a dropped connection with nothing reopening it is a
   process that looks alive and receives nothing. `test: INV-slack-42`
-- When Slack asks for a reconnect, the replacement opens before the old
-  connection closes. Slack renews connections on its own schedule and announces
-  it with a `disconnect` frame; Brissa opens the replacement at once, keeps the
-  old connection delivering until the replacement says hello, and only then
-  closes it. Slack allows several connections at a time, so there is never a
-  moment with none. Closing first and reopening once the close completed left a
-  ten-second window in production, and a slash command typed in it got Slack's
-  "the app did not respond". The old connection's close is the handover
-  finishing, so it schedules nothing. `test: INV-slack-102`
+- When Slack renews the connection, the replacement opens before the old one is
+  let go. Slack renews connections on its own schedule — `warning`, then about
+  ten seconds later `refresh_requested` — allows up to ten at a time, and closes
+  the old one itself. So Brissa opens the replacement at once and leaves the old
+  connection for Slack to close; closing it here could drop a payload already
+  routed to it while the close handshake runs. If Slack has not closed it 30
+  seconds after the replacement said hello, Brissa does. Closing first and
+  reopening once the close completed left a ten-second window in production, in
+  which a slash command got Slack's "the app did not respond". `test: INV-slack-102`
+- A second renewal notice on a connection already being replaced opens nothing
+  more. Otherwise a replacement still connecting when `refresh_requested`
+  arrives gets a twin that nothing tracks, which survives shutdown and holds the
+  process open. `test: INV-slack-103`
+- A replaced connection that closes before its replacement is open schedules no
+  second connection, and closing on purpose while a URL is still being issued
+  opens nothing afterwards. `test: INV-slack-104`
+- A disconnect that is not a scheduled renewal closes and backs off.
+  `link_disabled` means Socket Mode was switched off, and an unknown reason is
+  not a renewal either; opening a replacement at once there could loop at API
+  speed. `test: INV-slack-105`
 - Closing on purpose stays closed. The difference between "Slack dropped us" and
   "we are shutting down"; a reconnect loop ignoring the second keeps a process
   alive forever. `test: INV-slack-43`
