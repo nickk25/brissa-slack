@@ -126,9 +126,10 @@ function fakeSocket() {
 
 const issuing = (body: unknown): typeof fetch => (async () => ({ json: async () => body })) as unknown as typeof fetch
 
-test('INV-slack-42 a closed connection is reopened, because Slack closes them routinely', async () => {
-  // Slack sends `disconnect` before its own deploys. Treating that as a failure
-  // would mean Brissa stops working every time Slack ships.
+test('INV-slack-42 a connection that drops on its own is reopened', async () => {
+  // Sockets drop for reasons nobody announces: a network blip, a Slack restart.
+  // A dropped connection with nothing reopening it is a process that looks
+  // alive and receives nothing.
   const first = fakeSocket()
   const second = fakeSocket()
   const opened: string[] = []
@@ -146,10 +147,6 @@ test('INV-slack-42 a closed connection is reopened, because Slack closes them ro
 
   await new Promise((r) => setTimeout(r, 0))
   assert.deepEqual(opened, ['wss://example.test'])
-
-  // Slack asks us to go away; we close, which triggers the reopen.
-  first.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"link_disabled"}' })
-  assert.equal(first.closed(), 1)
 
   first.listeners.get('close')?.({ data: '' })
   await new Promise((r) => setTimeout(r, 1200))
@@ -336,4 +333,196 @@ test('INV-slack-70 a connection waiting to reopen keeps the process alive', asyn
   child.kill()
 
   assert.equal(outcome, 'alive', 'the process exited while a reconnect was pending')
+})
+
+/** A socket pool for the handover tests: each `open` takes the next fake. */
+function pool(count: number) {
+  const fakes = Array.from({ length: count }, () => fakeSocket())
+  const opened: ReturnType<typeof fakeSocket>[] = []
+  const open = () => {
+    const next = fakes[opened.length] ?? fakeSocket()
+    opened.push(next)
+    return next.socket
+  }
+  return { fakes, opened, open }
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 0))
+
+test('INV-slack-102 when Slack renews the connection, the replacement opens before the old one is let go', async (t) => {
+  // Slack renews connections on its own schedule, sending `warning` and then
+  // `refresh_requested`, and closes the old connection itself. Closing first
+  // and reopening once the close completed left a window with no connection —
+  // ten seconds in production, in which a slash command got Slack's "the app
+  // did not respond". Slack allows up to ten connections and recommends opening
+  // the extra one before the restart.
+  const p = pool(2)
+  const [old, replacement] = p.fakes
+  const connection = connectSocketMode({
+    appToken: 'xapp-x',
+    fetchImpl: issuing({ ok: true, url: 'wss://example.test' }),
+    open: p.open,
+    retireAfterMs: 50,
+    onEnvelope: () => {},
+  })
+  t.after(() => connection.close())
+
+  await tick()
+  old?.listeners.get('message')?.({ data: '{"type":"hello"}' })
+  old?.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"warning"}' })
+  await tick()
+  assert.equal(p.opened.length, 2, 'the replacement opens at once, with no backoff')
+
+  replacement?.listeners.get('message')?.({ data: '{"type":"hello"}' })
+  // Left for Slack to close: closing it here could drop a payload already
+  // routed to it while the close handshake runs.
+  assert.equal(old?.closed(), 0, 'the old connection is not closed the moment the replacement is live')
+
+  // Safety net, for an old connection Slack never closes.
+  await new Promise((r) => setTimeout(r, 80))
+  assert.equal(old?.closed(), 1, 'and is closed later if Slack has not done it')
+
+  // Its close is the handover finishing, so it schedules nothing.
+  old?.listeners.get('close')?.({ data: '' })
+  await new Promise((r) => setTimeout(r, 1200))
+  assert.equal(p.opened.length, 2)
+  connection.close()
+})
+
+test('INV-slack-103 a second renewal notice on a connection already being replaced opens nothing more', async (t) => {
+  // Slack's sequence on one connection is `warning`, then `refresh_requested`
+  // about ten seconds later. If the replacement has not said hello by then, a
+  // second replacement would open and be tracked by nothing — never closed on
+  // shutdown, holding the process open.
+  const p = pool(3)
+  const [old] = p.fakes
+  const connection = connectSocketMode({
+    appToken: 'xapp-x',
+    fetchImpl: issuing({ ok: true, url: 'wss://example.test' }),
+    open: p.open,
+    onEnvelope: () => {},
+  })
+  t.after(() => connection.close())
+
+  await tick()
+  old?.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"warning"}' })
+  await tick()
+  old?.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"refresh_requested"}' })
+  await tick()
+  assert.equal(p.opened.length, 2, 'one replacement, not two')
+
+  // And shutting down closes every connection that was opened.
+  connection.close()
+  for (const f of p.opened) assert.ok(f.closed() >= 1, 'no connection outlives close()')
+})
+
+test('INV-slack-104 a replaced connection that closes before its replacement is open schedules no second connection', async (t) => {
+  // The case that needs the guard: Slack closes the old connection while the
+  // replacement's URL is still being issued. Without it, the close would start
+  // a reconnect on top of the open already in flight.
+  let release: (v: unknown) => void = () => {}
+  const said: string[] = []
+  const p = pool(3)
+  const [old] = p.fakes
+  let calls = 0
+  const connection = connectSocketMode({
+    appToken: 'xapp-x',
+    fetchImpl: (async () => {
+      calls++
+      if (calls === 1) return { json: async () => ({ ok: true, url: 'wss://example.test' }) }
+      await new Promise((r) => { release = r })
+      return { json: async () => ({ ok: true, url: 'wss://example.test' }) }
+    }) as unknown as typeof fetch,
+    open: p.open,
+    onStatus: (status) => said.push(status),
+    onEnvelope: () => {},
+  })
+  t.after(() => connection.close())
+
+  await tick()
+  old?.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"refresh_requested"}' })
+  await tick()
+  old?.listeners.get('close')?.({ data: '' })
+  assert.ok(!said.some((s) => s.startsWith('reconnecting')), 'the old close must not start a reconnect')
+
+  release(undefined)
+  await tick()
+  await tick()
+  assert.equal(p.opened.length, 2, 'exactly the one replacement')
+  connection.close()
+
+  // Closing on purpose while a URL is still being issued opens nothing after.
+  let releaseLate: (v: unknown) => void = () => {}
+  let lateOpens = 0
+  const late = connectSocketMode({
+    appToken: 'xapp-x',
+    fetchImpl: (async () => {
+      await new Promise((r) => { releaseLate = r })
+      return { json: async () => ({ ok: true, url: 'wss://example.test' }) }
+    }) as unknown as typeof fetch,
+    open: () => { lateOpens++; return fakeSocket().socket },
+    onEnvelope: () => {},
+  })
+  t.after(() => late.close())
+  late.close()
+  releaseLate(undefined)
+  await tick()
+  await tick()
+  assert.equal(lateOpens, 0)
+})
+
+test('INV-slack-105 a disconnect that is not a scheduled renewal closes and backs off', async (t) => {
+  // `link_disabled` means Socket Mode was switched off, and a reason this does
+  // not know is not a renewal either. Opening a replacement at once there could
+  // loop at API speed; closing and reconnecting with backoff cannot.
+  const said: string[] = []
+  const p = pool(3)
+  const [old] = p.fakes
+  const connection = connectSocketMode({
+    appToken: 'xapp-x',
+    fetchImpl: issuing({ ok: true, url: 'wss://example.test' }),
+    open: p.open,
+    onStatus: (status) => said.push(status),
+    onEnvelope: () => {},
+  })
+  t.after(() => connection.close())
+
+  await tick()
+  old?.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"link_disabled"}' })
+  await tick()
+  assert.equal(p.opened.length, 1, 'no replacement opened at once')
+  assert.equal(old?.closed(), 1)
+
+  old?.listeners.get('close')?.({ data: '' })
+  assert.ok(said.some((s) => s.startsWith('reconnecting in')), 'it reconnects through the backoff')
+  connection.close()
+})
+
+test('INV-slack-106 a connection being replaced is never closed by Brissa before a replacement is live', async (t) => {
+  // If the replacement cannot open — `apps.connections.open` failing, say — the
+  // old connection is the only one there is. Closing it on a timer would trade a
+  // working connection for none. It stays until Slack closes it.
+  let calls = 0
+  const p = pool(2)
+  const [old] = p.fakes
+  const connection = connectSocketMode({
+    appToken: 'xapp-x',
+    fetchImpl: (async () => {
+      calls++
+      if (calls === 1) return { json: async () => ({ ok: true, url: 'wss://example.test' }) }
+      return { json: async () => ({ ok: false, error: 'internal_error' }) }
+    }) as unknown as typeof fetch,
+    open: p.open,
+    retireAfterMs: 20,
+    onEnvelope: () => {},
+  })
+  t.after(() => connection.close())
+
+  await tick()
+  old?.listeners.get('message')?.({ data: '{"type":"hello"}' })
+  old?.listeners.get('message')?.({ data: '{"type":"disconnect","reason":"warning"}' })
+  await new Promise((r) => setTimeout(r, 120))
+
+  assert.equal(old?.closed(), 0, 'the only working connection stays open')
+  connection.close()
 })

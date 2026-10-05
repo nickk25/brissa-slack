@@ -243,9 +243,34 @@ a revoked app token does not reconnect in a tight loop forever.
 - The envelope is acknowledged before it is handed on. `test: INV-slack-40`
 - A frame with nothing to act on is acknowledged to nobody; acknowledging one we
   did not understand would tell Slack it was handled. `test: INV-slack-41`
-- A closed connection is reopened, because Slack closes them routinely — it sends
-  `disconnect` before its own deploys, and treating that as a failure would mean
-  Brissa stops working every time Slack ships. `test: INV-slack-42`
+- A connection that drops on its own is reopened. Sockets drop for reasons
+  nobody announces, and a dropped connection with nothing reopening it is a
+  process that looks alive and receives nothing. `test: INV-slack-42`
+- When Slack renews the connection, the replacement opens before the old one is
+  let go. Slack renews connections on its own schedule — `warning`, then about
+  ten seconds later `refresh_requested` — allows up to ten at a time, and closes
+  the old one itself. So Brissa opens the replacement at once and leaves the old
+  connection for Slack to close; closing it here could drop a payload already
+  routed to it while the close handshake runs. If Slack has not closed it 30
+  seconds after the replacement said hello, Brissa does. Closing first and
+  reopening once the close completed left a ten-second window in production, in
+  which a slash command got Slack's "the app did not respond". `test: INV-slack-102`
+- A second renewal notice on a connection already being replaced opens nothing
+  more. Otherwise a replacement still connecting when `refresh_requested`
+  arrives gets a twin that nothing tracks, which survives shutdown and holds the
+  process open. `test: INV-slack-103`
+- A replaced connection that closes before its replacement is open schedules no
+  second connection, and closing on purpose while a URL is still being issued
+  opens nothing afterwards. `test: INV-slack-104`
+- A disconnect that is not a scheduled renewal closes and backs off.
+  `link_disabled` means Socket Mode was switched off, and an unknown reason is
+  not a renewal either; opening a replacement at once there could loop at API
+  speed. `test: INV-slack-105`
+- A connection being replaced is never closed by Brissa before a replacement is
+  live. If the replacement cannot open, the old connection is the only one there
+  is, and closing it on a timer would trade a working connection for none; it
+  stays until Slack closes it. The safety net is armed by the replacement's
+  hello, never by the renewal notice. `test: INV-slack-106`
 - Closing on purpose stays closed. The difference between "Slack dropped us" and
   "we are shutting down"; a reconnect loop ignoring the second keeps a process
   alive forever. `test: INV-slack-43`
